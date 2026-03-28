@@ -1,0 +1,119 @@
+.voice-recorder {
+    display: flex;
+    align-items: center;
+    gap: var(--space-sm);
+}
+
+.voice-btn {
+    width: 48px;
+    height: 48px;
+    border-radius: 50%;
+    border: 2px solid rgba(139, 119, 101, 0.2);
+    background: var(--bg-tertiary);
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 1.3rem;
+    transition: all 0.2s ease;
+}
+
+.voice-btn:hover:not(:disabled) {
+    background: var(--accent-primary);
+    border-color: var(--accent-primary);
+    transform: scale(1.05);
+}
+
+.voice-btn:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+}
+
+.voice-btn.recording {
+    background: var(--accent-danger);
+    border-color: var(--accent-danger);
+    animation: pulse-recording 1.5s ease-in-out infinite;
+}
+
+.voice-btn.processing {
+    background: var(--accent-secondary);
+    border-color: var(--accent-secondary);
+}
+
+@keyframes pulse-recording {
+
+    0%,
+    100% {
+        box-shadow: 0 0 0 0 rgba(220, 38, 38, 0.4);
+    }
+
+    50% {
+        box-shadow: 0 0 0 12px rgba(220, 38, 38, 0);
+    }
+}
+
+.recording-indicator {
+    display: flex;
+    align-items: center;
+    gap: var(--space-xs);
+    color: var(--accent-danger);
+    font-size: 0.85rem;
+    font-weight: 500;
+}
+
+.pulse-dot {
+    width: 8px;
+    height: 8px;
+    background: var(--accent-danger);
+    border-radius: 50%;
+    animation: pulse 1s ease-in-out infinite;
+}
+
+@keyframes pulse {
+
+    0%,
+    100% {
+        opacity: 1;
+    }
+
+    50% {
+        opacity: 0.3;
+    }
+}
+
+.voice-error {
+    color: var(--accent-warning);
+    cursor: help;
+}
+
+/* Emotion badge styling */
+.emotion-badge {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    padding: 4px 8px;
+    border-radius: var(--radius-sm);
+    font-size: 0.75rem;
+    font-weight: 500;
+    margin-left: var(--space-sm);
+}
+
+.emotion-badge.sadness {
+    background: rgba(220, 38, 38, 0.15);
+    color: var(--accent-warm);
+}
+
+.emotion-badge.anger {
+    background: rgba(220, 38, 38, 0.15);
+    color: var(--accent-danger);
+}
+
+.emotion-badge.happiness {
+    background: rgba(22, 163, 74, 0.15);
+    color: var(--accent-success);
+}
+
+.emotion-badge.neutral {
+    background: rgba(139, 119, 101, 0.15);
+    color: var(--text-secondary);
+}
