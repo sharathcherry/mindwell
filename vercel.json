@@ -1,14 +1,13 @@
 {
   "$schema": "https://openapi.vercel.sh/vercel.json",
   "framework": "vite",
-  "installCommand": "cd client && npm install",
+  "installCommand": "cd server && npm install && cd ../client && npm install",
   "buildCommand": "cd client && npm run build",
   "outputDirectory": "client/dist",
   "rewrites": [
     {
-      "source": "/(.*)",
+      "source": "/((?!api/).*)",
       "destination": "/index.html"
     }
   ]
 }
-
