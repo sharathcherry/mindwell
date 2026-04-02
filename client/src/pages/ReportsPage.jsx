@@ -21,21 +21,21 @@ const REPORT_TYPES = [
         title: 'Therapy Recommendation',
         icon: '🩺',
         description: 'Get personalized therapy type recommendations based on your conversations and patterns.',
-        color: '#7c3aed',
+        color: 'var(--accent-primary)',
     },
     {
         id: 'lifestyle',
         title: 'Lifestyle Wellness Plan',
         icon: '🌱',
         description: 'Receive a customized daily wellness plan including sleep, exercise, and nutrition tips.',
-        color: '#34d399',
+        color: 'var(--accent-secondary)',
     },
     {
         id: 'progress',
         title: 'Progress Summary',
         icon: '📊',
         description: 'Review your journey including mood trends, journal insights, and exercise streaks.',
-        color: '#22d3ee',
+        color: 'var(--accent-primary)',
     },
 ];
 
@@ -105,24 +105,26 @@ export default function ReportsPage() {
                     break;
 
                 case 'progress':
-                    const last30DaysExercises = exercises.filter(e => {
-                        const date = new Date(e.completedAt);
-                        const thirtyDaysAgo = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000);
-                        return date >= thirtyDaysAgo;
-                    });
+                    {
+                        const last30DaysExercises = exercises.filter(e => {
+                            const date = new Date(e.completedAt);
+                            const thirtyDaysAgo = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000);
+                            return date >= thirtyDaysAgo;
+                        });
 
-                    reportData = {
-                        period: 'Last 30 Days',
-                        totalConversations: conversations.length,
-                        moodEntries: moods.length,
-                        journalEntries: journals.length,
-                        exercisesCompleted: last30DaysExercises.length,
-                        moodSummary: moods.length >= 5
-                            ? `Your average mood is ${(moods.reduce((a, m) => a + m.mood, 0) / moods.length).toFixed(1)}/5 over ${moods.length} entries.`
-                            : 'Log more moods to see trends!',
-                    };
-                    doc = generateProgressReportPDF(reportData);
-                    filename = 'MindWell_Progress_Report';
+                        reportData = {
+                            period: 'Last 30 Days',
+                            totalConversations: conversations.length,
+                            moodEntries: moods.length,
+                            journalEntries: journals.length,
+                            exercisesCompleted: last30DaysExercises.length,
+                            moodSummary: moods.length >= 5
+                                ? `Your average mood is ${(moods.reduce((a, m) => a + m.mood, 0) / moods.length).toFixed(1)}/5 over ${moods.length} entries.`
+                                : 'Log more moods to see trends!',
+                        };
+                        doc = generateProgressReportPDF(reportData);
+                        filename = 'MindWell_Progress_Report';
+                    }
                     break;
 
                 default:

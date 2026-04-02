@@ -2,6 +2,7 @@
     display: flex;
     margin-bottom: var(--space-md);
     animation: fadeIn 0.3s ease;
+    min-width: 0;
 }
 
 .chat-bubble-wrapper.user {
@@ -25,12 +26,31 @@
     background: var(--accent-primary);
     color: white;
     border-bottom-right-radius: var(--space-xs);
+    max-width: 72%;
 }
 
 .chat-bubble.ai {
     background: var(--bg-card);
     border: 1px solid rgba(139, 119, 101, 0.2);
     border-bottom-left-radius: var(--space-xs);
+    max-width: 80%;
+}
+
+.user-avatar {
+    width: 32px;
+    height: 32px;
+    border-radius: 50%;
+    background: var(--accent-primary);
+    color: white;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 0.8rem;
+    font-weight: 700;
+    flex-shrink: 0;
+    margin-left: var(--space-sm);
+    align-self: flex-end;
+    opacity: 0.85;
 }
 
 .ai-avatar {

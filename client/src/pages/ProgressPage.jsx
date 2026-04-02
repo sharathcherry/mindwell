@@ -1,65 +1,49 @@
-import { useState, useEffect } from 'react';
-import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, BarChart, Bar } from 'recharts';
+import { useMemo } from 'react';
+import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts';
 import { moodStorage, journalStorage, exerciseStorage, conversationStorage } from '../utils/storage';
 import './ProgressPage.css';
 
-export default function ProgressPage() {
-    const [moodData, setMoodData] = useState([]);
-    const [stats, setStats] = useState({
-        totalMoods: 0,
-        totalJournals: 0,
-        totalExercises: 0,
-        totalConversations: 0,
-        exerciseStreak: 0,
-        avgMood: 0,
+function processMoodData(moods) {
+    const grouped = {};
+    moods.forEach(m => {
+        const date = new Date(m.timestamp).toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+        if (!grouped[date]) {
+            grouped[date] = [];
+        }
+        grouped[date].push(m.mood);
     });
 
-    useEffect(() => {
-        loadData();
-    }, []);
+    return Object.entries(grouped).map(([date, values]) => ({
+        date,
+        mood: values.reduce((a, b) => a + b, 0) / values.length,
+    })).slice(-14);
+}
 
-    const loadData = () => {
-        const moods = moodStorage.getLast30Days();
-        const journals = journalStorage.getAll();
-        const exercises = exerciseStorage.getAll();
-        const conversations = conversationStorage.getAll();
+function getProgressSnapshot() {
+    const moods = moodStorage.getLast30Days();
+    const journals = journalStorage.getAll();
+    const exercises = exerciseStorage.getAll();
+    const conversations = conversationStorage.getAll();
 
-        // Process mood data for chart
-        const moodChartData = processMoodData(moods);
-        setMoodData(moodChartData);
+    const avgMood = moods.length > 0
+        ? moods.reduce((a, m) => a + m.mood, 0) / moods.length
+        : 0;
 
-        // Calculate stats
-        const avgMood = moods.length > 0
-            ? moods.reduce((a, m) => a + m.mood, 0) / moods.length
-            : 0;
-
-        setStats({
+    return {
+        moodData: processMoodData(moods),
+        stats: {
             totalMoods: moods.length,
             totalJournals: journals.length,
             totalExercises: exercises.length,
             totalConversations: conversations.filter(c => c.role === 'user').length,
             exerciseStreak: exerciseStorage.getStreak(),
             avgMood: avgMood.toFixed(1),
-        });
+        },
     };
+}
 
-    const processMoodData = (moods) => {
-        // Group moods by date
-        const grouped = {};
-        moods.forEach(m => {
-            const date = new Date(m.timestamp).toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
-            if (!grouped[date]) {
-                grouped[date] = [];
-            }
-            grouped[date].push(m.mood);
-        });
-
-        // Average if multiple entries per day
-        return Object.entries(grouped).map(([date, values]) => ({
-            date,
-            mood: values.reduce((a, b) => a + b, 0) / values.length,
-        })).slice(-14); // Last 14 days
-    };
+export default function ProgressPage() {
+    const { moodData, stats } = useMemo(() => getProgressSnapshot(), []);
 
     const getMoodEmoji = (value) => {
         if (value >= 4.5) return '😄';

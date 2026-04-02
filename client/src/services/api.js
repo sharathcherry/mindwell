@@ -1,4 +1,13 @@
-const API_BASE = 'http://localhost:3001/api';
+const API_BASE = import.meta.env.VITE_API_BASE_URL || '/api';
+
+async function parseErrorResponse(response, fallbackMessage) {
+    try {
+        const payload = await response.json();
+        return payload?.error || payload?.message || fallbackMessage;
+    } catch {
+        return fallbackMessage;
+    }
+}
 
 export const chatApi = {
     sendMessage: async (message, conversationHistory, userContext) => {
@@ -16,7 +25,7 @@ export const chatApi = {
             });
 
             if (!response.ok) {
-                throw new Error('Failed to get response');
+                throw new Error(await parseErrorResponse(response, 'Failed to get response'));
             }
 
             const data = await response.json();
@@ -44,7 +53,7 @@ export const reportsApi = {
             });
 
             if (!response.ok) {
-                throw new Error('Failed to generate therapy report');
+                throw new Error(await parseErrorResponse(response, 'Failed to generate therapy report'));
             }
 
             return await response.json();
@@ -69,7 +78,7 @@ export const reportsApi = {
             });
 
             if (!response.ok) {
-                throw new Error('Failed to generate lifestyle report');
+                throw new Error(await parseErrorResponse(response, 'Failed to generate lifestyle report'));
             }
 
             return await response.json();

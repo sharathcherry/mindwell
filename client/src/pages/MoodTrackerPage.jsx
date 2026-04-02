@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState } from 'react';
 import { moodStorage } from '../utils/storage';
 import './MoodTrackerPage.css';
 
@@ -13,16 +13,12 @@ const MOODS = [
 export default function MoodTrackerPage() {
     const [selectedMood, setSelectedMood] = useState(null);
     const [note, setNote] = useState('');
-    const [moodHistory, setMoodHistory] = useState([]);
+    const [moodHistory, setMoodHistory] = useState(() => moodStorage.getLast30Days().slice().reverse());
     const [showSuccess, setShowSuccess] = useState(false);
-
-    useEffect(() => {
-        loadMoodHistory();
-    }, []);
 
     const loadMoodHistory = () => {
         const moods = moodStorage.getLast30Days();
-        setMoodHistory(moods.reverse());
+        setMoodHistory(moods.slice().reverse());
     };
 
     const handleLogMood = () => {

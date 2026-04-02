@@ -10,7 +10,7 @@ An AI-powered mental wellness web application with agentic capabilities, voice e
 - 🎤 **Voice Input**: Speak to MindWell using your microphone
 - 🧠 **Emotion Detection**: Whisper (speech-to-text) + SpeechBrain SER (emotion from voice)
 - Detects: sadness, anger, happiness, neutral with confidence scores
-- NVIDIA NIM AI for intelligent responses
+- **Groq Cloud AI** for lightning-fast intelligent responses (Llama 3.3 70B)
 - Crisis detection with immediate resources
 
 ### 🎭 Mood Tracker
@@ -41,7 +41,8 @@ An AI-powered mental wellness web application with agentic capabilities, voice e
 ### Prerequisites
 - Node.js 18+
 - Python 3.9+ (for voice features)
-- NVIDIA API key (optional, for AI responses)
+- **Groq API key** (Recommended for fast AI responses)
+- NVIDIA API key (Optional fallback)
 
 ### Installation
 
@@ -50,7 +51,7 @@ An AI-powered mental wellness web application with agentic capabilities, voice e
    cd mindwell/server
    npm install
    cp .env.example .env
-   # Add your NVIDIA_API_KEY to .env
+   # Add your GROQ_API_KEY to .env
    ```
 
 2. **Set up the frontend**
@@ -64,6 +65,22 @@ An AI-powered mental wellness web application with agentic capabilities, voice e
    cd mindwell/python_audio
    pip install -r requirements.txt
    ```
+
+### Environment Variables
+
+Backend (`server/.env`):
+
+- `PORT` - API port, defaults to `3001`
+- `GROQ_API_KEY` - preferred LLM provider
+- `NVIDIA_API_KEY` - fallback LLM provider
+- `CLIENT_ORIGINS` - comma-separated CORS allow list, defaults to local Vite dev hosts
+
+Frontend (`client/.env`):
+
+- `VITE_API_BASE_URL` - optional override for the chat/report API base path
+- `VITE_AUDIO_API_URL` - optional override for the voice processing endpoint
+
+If you are running locally, you can leave these unset and use the default Vite proxy setup.
 
 ### Running the App
 
@@ -92,7 +109,7 @@ Open http://localhost:5173
 |-------|------------|
 | Frontend | React + Vite |
 | Backend | Express.js + FastAPI |
-| AI Chat | NVIDIA NIM (Llama 3.1 70B) |
+| AI Chat | Groq Cloud (Llama 3.3 70B) |
 | Speech-to-Text | Whisper (local) |
 | Emotion Detection | SpeechBrain wav2vec2 |
 | Storage | LocalStorage |

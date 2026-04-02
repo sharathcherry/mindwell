@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState } from 'react';
 import { journalStorage } from '../utils/storage';
 import './JournalPage.css';
 
@@ -14,18 +14,15 @@ const PROMPTS = [
 ];
 
 export default function JournalPage() {
-    const [entries, setEntries] = useState([]);
+    const [entries, setEntries] = useState(() => journalStorage.getAll());
     const [isWriting, setIsWriting] = useState(false);
     const [title, setTitle] = useState('');
     const [content, setContent] = useState('');
     const [searchQuery, setSearchQuery] = useState('');
     const [editingId, setEditingId] = useState(null);
-    const [randomPrompt, setRandomPrompt] = useState('');
-
-    useEffect(() => {
-        loadEntries();
-        setRandomPrompt(PROMPTS[Math.floor(Math.random() * PROMPTS.length)]);
-    }, []);
+    const [randomPrompt, setRandomPrompt] = useState(
+        () => PROMPTS[Math.floor(Math.random() * PROMPTS.length)]
+    );
 
     const loadEntries = () => {
         setEntries(journalStorage.getAll());

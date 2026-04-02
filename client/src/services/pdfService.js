@@ -9,7 +9,7 @@ const COLORS = {
     white: [255, 255, 255],
 };
 
-const addHeader = (doc, title, subtitle) => {
+const addHeader = (doc, title) => {
     // Header background
     doc.setFillColor(...COLORS.primary);
     doc.rect(0, 0, 210, 50, 'F');
@@ -72,7 +72,7 @@ const addBulletList = (doc, items, startY) => {
 export const generateTherapyReportPDF = (reportData) => {
     const doc = new jsPDF();
 
-    addHeader(doc, 'Therapy Recommendation Report', 'Personalized for Your Journey');
+    addHeader(doc, 'Therapy Recommendation Report');
 
     let y = 70;
 
@@ -145,7 +145,7 @@ export const generateTherapyReportPDF = (reportData) => {
 export const generateLifestylePlanPDF = (reportData) => {
     const doc = new jsPDF();
 
-    addHeader(doc, 'Lifestyle Wellness Plan', 'Your Personalized Daily Guide');
+    addHeader(doc, 'Lifestyle Wellness Plan');
 
     let y = 70;
 
@@ -228,7 +228,7 @@ export const generateLifestylePlanPDF = (reportData) => {
 export const generateProgressReportPDF = (reportData) => {
     const doc = new jsPDF();
 
-    addHeader(doc, 'Progress Summary Report', 'Tracking Your Growth');
+    addHeader(doc, 'Progress Summary Report');
 
     let y = 70;
 

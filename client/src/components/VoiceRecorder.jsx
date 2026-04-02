@@ -1,7 +1,7 @@
 import { useState, useRef } from 'react';
 import './VoiceRecorder.css';
 
-const AUDIO_API_URL = 'http://localhost:3002/api/audio/process';
+const AUDIO_API_URL = import.meta.env.VITE_AUDIO_API_URL || '/api/audio/process';
 
 export default function VoiceRecorder({ onResult, disabled }) {
     const [isRecording, setIsRecording] = useState(false);
@@ -63,7 +63,14 @@ export default function VoiceRecorder({ onResult, disabled }) {
             });
 
             if (!response.ok) {
-                throw new Error('Audio processing failed');
+                let fallback = 'Audio processing failed';
+                try {
+                    const payload = await response.json();
+                    fallback = payload?.detail || payload?.error || fallback;
+                } catch {
+                    // Keep fallback message.
+                }
+                throw new Error(fallback);
             }
 
             const result = await response.json();

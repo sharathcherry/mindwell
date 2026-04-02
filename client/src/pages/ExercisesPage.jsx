@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect } from 'react';
 import { exerciseStorage } from '../utils/storage';
 import './ExercisesPage.css';
 
@@ -37,13 +37,18 @@ const EXERCISES = [
     },
 ];
 
+const BODY_PARTS = [
+    { name: 'Head & Face', instruction: 'Relax your forehead, jaw, and facial muscles.' },
+    { name: 'Neck & Shoulders', instruction: 'Release tension in your neck and let your shoulders drop.' },
+    { name: 'Arms & Hands', instruction: 'Feel warmth flowing through your arms to your fingertips.' },
+    { name: 'Chest & Back', instruction: 'Take a deep breath and relax your chest and upper back.' },
+    { name: 'Stomach & Hips', instruction: 'Soften your belly and relax your lower back.' },
+    { name: 'Legs & Feet', instruction: 'Release tension from your thighs down to your toes.' },
+];
+
 export default function ExercisesPage() {
     const [activeExercise, setActiveExercise] = useState(null);
-    const [streak, setStreak] = useState(0);
-
-    useEffect(() => {
-        setStreak(exerciseStorage.getStreak());
-    }, []);
+    const [streak, setStreak] = useState(() => exerciseStorage.getStreak());
 
     const handleComplete = (exerciseId) => {
         exerciseStorage.log({ type: exerciseId });
@@ -273,17 +278,8 @@ function GroundingExercise({ onComplete, onBack }) {
 function BodyScanExercise({ onComplete, onBack }) {
     const [step, setStep] = useState(0);
 
-    const bodyParts = [
-        { name: 'Head & Face', instruction: 'Relax your forehead, jaw, and facial muscles.' },
-        { name: 'Neck & Shoulders', instruction: 'Release tension in your neck and let your shoulders drop.' },
-        { name: 'Arms & Hands', instruction: 'Feel warmth flowing through your arms to your fingertips.' },
-        { name: 'Chest & Back', instruction: 'Take a deep breath and relax your chest and upper back.' },
-        { name: 'Stomach & Hips', instruction: 'Soften your belly and relax your lower back.' },
-        { name: 'Legs & Feet', instruction: 'Release tension from your thighs down to your toes.' },
-    ];
-
     useEffect(() => {
-        if (step >= 0 && step < bodyParts.length) {
+        if (step >= 0 && step < BODY_PARTS.length) {
             const timer = setTimeout(() => {
                 setStep(s => s + 1);
             }, 8000);
@@ -306,18 +302,18 @@ function BodyScanExercise({ onComplete, onBack }) {
                 </div>
             )}
 
-            {step > 0 && step <= bodyParts.length && (
+            {step > 0 && step <= BODY_PARTS.length && (
                 <div className="bodyscan-step">
                     <div className="bodyscan-progress">
-                        Step {step} of {bodyParts.length}
+                        Step {step} of {BODY_PARTS.length}
                     </div>
-                    <h3>{bodyParts[step - 1].name}</h3>
-                    <p>{bodyParts[step - 1].instruction}</p>
+                    <h3>{BODY_PARTS[step - 1].name}</h3>
+                    <p>{BODY_PARTS[step - 1].instruction}</p>
                     <div className="pulse-circle"></div>
                 </div>
             )}
 
-            {step > bodyParts.length && (
+            {step > BODY_PARTS.length && (
                 <div className="exercise-complete">
                     <span className="complete-icon">😌</span>
                     <h3>Fully Relaxed</h3>
