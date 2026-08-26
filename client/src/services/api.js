@@ -1,6 +1,8 @@
 import { getToken, refresh as authRefresh, logout as authLogout } from './auth.js';
 
-const API_BASE = import.meta.env?.VITE_API_BASE_URL || '/api';
+const API_BASE = (import.meta.env?.VITE_API_BASE_URL && !import.meta.env.VITE_API_BASE_URL.includes('undefined'))
+    ? import.meta.env.VITE_API_BASE_URL
+    : '/api';
 
 export async function parseErrorResponse(response, fallbackMessage = 'Request failed') {
     try {

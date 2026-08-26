@@ -2,7 +2,9 @@ import { storage } from '../utils/storage.js';
 
 const AUTH_KEY = 'mindwell_user';
 const TOKEN_KEY = 'mindwell_token';
-const API_BASE = import.meta.env?.VITE_API_BASE_URL || '/api';
+const API_BASE = (import.meta.env?.VITE_API_BASE_URL && !import.meta.env.VITE_API_BASE_URL.includes('undefined'))
+    ? import.meta.env.VITE_API_BASE_URL
+    : '/api';
 
 const AUTH_VERSION = 2;
 const PBKDF2_ITERATIONS = 120000;
