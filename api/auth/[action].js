@@ -25,6 +25,8 @@ export default async function handler(req, res) {
             return handleMe(req, res);
         case 'logout':
             return handleLogout(req, res);
+        case 'google':
+            return handleGoogle(req, res);
         default:
             return res.status(404).json({ error: `Unknown auth action: ${action}` });
     }
@@ -256,5 +258,84 @@ async function handleLogout(req, res) {
     } catch (error) {
         console.error('API logout error:', error);
         return res.status(500).json({ error: 'Failed to logout' });
+    }
+}
+
+async function handleGoogle(req, res) {
+    if (req.method !== 'POST') return methodNotAllowed(res);
+
+    try {
+        const { credential } = req.body || {};
+        if (!credential || typeof credential !== 'string') {
+            return res.status(400).json({ error: 'Google credential token is required' });
+        }
+
+        // Verify ID token with Google's public tokeninfo endpoint
+        const verifyRes = await fetch(`https://oauth2.googleapis.com/tokeninfo?id_token=${encodeURIComponent(credential)}`);
+        if (!verifyRes.ok) {
+            return res.status(401).json({ error: 'Invalid Google authentication token' });
+        }
+
+        const payload = await verifyRes.json();
+        const expectedClientId = process.env.GOOGLE_CLIENT_ID || '56537672878-gfsseqkuc80i07r7habkmh30rsiuhchs.apps.googleusercontent.com';
+        
+        if (payload.aud !== expectedClientId && payload.azp !== expectedClientId) {
+            return res.status(401).json({ error: 'Google token audience mismatch' });
+        }
+
+        const email = (payload.email || '').trim().toLowerCase();
+        if (!email || payload.email_verified === 'false' || payload.email_verified === false) {
+            return res.status(400).json({ error: 'Unverified Google email address' });
+        }
+
+        const name = payload.name || payload.given_name || email.split('@')[0];
+
+        // Find or auto-create user in Prisma DB
+        let user = await prisma.user.findUnique({
+            where: { email },
+        });
+
+        if (!user) {
+            const randomSecret = Math.random().toString(36).slice(2) + Date.now().toString(36);
+            const passwordHash = await bcrypt.hash(randomSecret, 10);
+            user = await prisma.user.create({
+                data: {
+                    email,
+                    name,
+                    passwordHash,
+                    role: 'user',
+                },
+            });
+        }
+
+        const accessToken = generateAccessToken(user);
+        const refreshToken = generateRefreshToken(user);
+
+        await prisma.session.create({
+            data: {
+                userId: user.id,
+                tokenHash: hashToken(refreshToken),
+                expiresAt: new Date(Date.now() + REFRESH_TOKEN_MAX_AGE_MS),
+            },
+        });
+
+        const cookieOptions = `Path=/; HttpOnly; SameSite=Lax; Max-Age=${Math.floor(REFRESH_TOKEN_MAX_AGE_MS / 1000)}${process.env.NODE_ENV === 'production' ? '; Secure' : ''}`;
+        res.setHeader('Set-Cookie', `refreshToken=${refreshToken}; ${cookieOptions}`);
+
+        return res.json({
+            user: {
+                id: user.id,
+                email: user.email,
+                name: user.name,
+                role: user.role,
+                timezone: user.timezone,
+                locale: user.locale,
+                createdAt: user.createdAt,
+            },
+            accessToken,
+        });
+    } catch (error) {
+        console.error('API Google login error:', error);
+        return res.status(500).json({ error: 'Failed to authenticate with Google' });
     }
 }

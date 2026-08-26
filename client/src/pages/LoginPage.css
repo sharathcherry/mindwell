@@ -301,6 +301,25 @@
     40%           { transform: translateY(-6px); }
 }
 
+/* Google Sign-in Container */
+.google-auth-container {
+    width: 100%;
+    display: flex;
+    justify-content: center;
+    margin-bottom: var(--space-xs);
+}
+
+.google-btn-slot {
+    width: 100%;
+    min-height: 44px;
+    display: flex;
+    justify-content: center;
+}
+
+.google-btn-slot iframe {
+    margin: 0 auto !important;
+}
+
 /* Divider */
 .auth-divider {
     display: flex;

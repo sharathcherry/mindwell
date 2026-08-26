@@ -5,6 +5,7 @@ import {
     clearToken,
     login as authLogin,
     signup as authSignup,
+    loginWithGoogle as authGoogleLogin,
     logout as authLogout,
     getMe,
     refresh as authRefresh,
@@ -91,6 +92,18 @@ export function AuthProvider({ children }) {
         }
     };
 
+    const googleLogin = async (credential) => {
+        setLoading(true);
+        try {
+            const data = await authGoogleLogin(credential);
+            setUser(data.user);
+            setAccessToken(data.accessToken);
+            return data;
+        } finally {
+            setLoading(false);
+        }
+    };
+
     const logout = async () => {
         setLoading(true);
         try {
@@ -110,6 +123,7 @@ export function AuthProvider({ children }) {
         isAuthenticated: Boolean(user),
         login,
         signup,
+        googleLogin,
         logout,
         checkAuth: restoreSession,
     };

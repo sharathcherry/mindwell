@@ -259,4 +259,73 @@ router.get('/me', requireAuth, async (req, res) => {
     }
 });
 
+/**
+ * POST /api/auth/google
+ */
+router.post('/google', async (req, res) => {
+    try {
+        const { credential } = req.body || {};
+        if (!credential || typeof credential !== 'string') {
+            return res.status(400).json({ error: 'Google credential token is required' });
+        }
+
+        const verifyRes = await fetch(`https://oauth2.googleapis.com/tokeninfo?id_token=${encodeURIComponent(credential)}`);
+        if (!verifyRes.ok) {
+            return res.status(401).json({ error: 'Invalid Google authentication token' });
+        }
+
+        const payload = await verifyRes.json();
+        const expectedClientId = process.env.GOOGLE_CLIENT_ID || '56537672878-gfsseqkuc80i07r7habkmh30rsiuhchs.apps.googleusercontent.com';
+
+        if (payload.aud !== expectedClientId && payload.azp !== expectedClientId) {
+            return res.status(401).json({ error: 'Google token audience mismatch' });
+        }
+
+        const email = (payload.email || '').trim().toLowerCase();
+        if (!email || payload.email_verified === 'false' || payload.email_verified === false) {
+            return res.status(400).json({ error: 'Unverified Google email address' });
+        }
+
+        const name = payload.name || payload.given_name || email.split('@')[0];
+
+        let user = await prisma.user.findUnique({
+            where: { email },
+        });
+
+        if (!user) {
+            const randomSecret = Math.random().toString(36).slice(2) + Date.now().toString(36);
+            const passwordHash = await bcrypt.hash(randomSecret, 10);
+            user = await prisma.user.create({
+                data: {
+                    email,
+                    name,
+                    passwordHash,
+                    role: 'user',
+                },
+            });
+        }
+
+        const accessToken = generateAccessToken(user);
+        const refreshToken = generateRefreshToken(user);
+
+        await prisma.session.create({
+            data: {
+                userId: user.id,
+                tokenHash: hashToken(refreshToken),
+                expiresAt: new Date(Date.now() + REFRESH_TOKEN_MAX_AGE_MS),
+            },
+        });
+
+        setRefreshTokenCookie(res, refreshToken);
+
+        return res.json({
+            user: sanitizeUser(user),
+            accessToken,
+        });
+    } catch (error) {
+        console.error('Google login error:', error);
+        return res.status(500).json({ error: 'Failed to authenticate with Google' });
+    }
+});
+
 export default router;

@@ -88,6 +88,31 @@ export async function signup(userData) {
     return data;
 }
 
+export async function loginWithGoogle(credential) {
+    const response = await fetch(`${API_BASE}/auth/google`, {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json',
+        },
+        credentials: 'include',
+        body: JSON.stringify({ credential }),
+    });
+
+    const data = await response.json();
+    if (!response.ok) {
+        throw new Error(data.error || 'Google login failed');
+    }
+
+    if (data.accessToken) {
+        setToken(data.accessToken);
+    }
+    if (data.user) {
+        saveUser(data.user);
+    }
+
+    return data;
+}
+
 export async function refresh() {
     const response = await fetch(`${API_BASE}/auth/refresh`, {
         method: 'POST',

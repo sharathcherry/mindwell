@@ -1,10 +1,12 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Eye, EyeOff, Brain, Shield, Smile, TrendingUp } from 'lucide-react';
 import { useAuth } from '../context/AuthContext.jsx';
 import { storage } from '../utils/storage.js';
 import { hashPassword, verifyPassword } from '../services/auth.js';
 import './LoginPage.css';
+
+const GOOGLE_CLIENT_ID = import.meta.env?.VITE_GOOGLE_CLIENT_ID || '56537672878-gfsseqkuc80i07r7habkmh30rsiuhchs.apps.googleusercontent.com';
 
 const FEATURES = [
     { icon: Brain,      text: 'AI-powered mental wellness companion' },
@@ -15,7 +17,7 @@ const FEATURES = [
 
 export default function LoginPage() {
     const navigate = useNavigate();
-    const { login, signup } = useAuth();
+    const { login, signup, googleLogin } = useAuth();
     const [mode, setMode] = useState('login'); // 'login' | 'signup'
     const [showPassword, setShowPassword] = useState(false);
     const [error, setError] = useState('');
@@ -26,6 +28,57 @@ export default function LoginPage() {
         email: '',
         password: '',
     });
+
+    useEffect(() => {
+        const handleGoogleCallback = async (response) => {
+            if (!response?.credential) return;
+            setLoading(true);
+            setError('');
+            try {
+                await googleLogin(response.credential);
+                navigate('/', { replace: true });
+            } catch (err) {
+                setError(err.message || 'Google authentication failed. Please try again.');
+            } finally {
+                setLoading(false);
+            }
+        };
+
+        const initGoogleBtn = () => {
+            if (window.google?.accounts?.id) {
+                window.google.accounts.id.initialize({
+                    client_id: GOOGLE_CLIENT_ID,
+                    callback: handleGoogleCallback,
+                    auto_select: false,
+                    cancel_on_tap_outside: true,
+                });
+
+                const btnContainer = document.getElementById('google-signin-btn');
+                if (btnContainer) {
+                    btnContainer.innerHTML = '';
+                    window.google.accounts.id.renderButton(btnContainer, {
+                        type: 'standard',
+                        theme: 'filled_black',
+                        size: 'large',
+                        text: 'continue_with',
+                        shape: 'rectangular',
+                        logo_alignment: 'left',
+                        width: '100%',
+                    });
+                }
+            }
+        };
+
+        initGoogleBtn();
+        const timer = setInterval(() => {
+            if (window.google?.accounts?.id) {
+                clearInterval(timer);
+                initGoogleBtn();
+            }
+        }, 300);
+
+        return () => clearInterval(timer);
+    }, [googleLogin, navigate]);
 
     const handleChange = (e) => {
         setForm(prev => ({ ...prev, [e.target.name]: e.target.value }));
@@ -153,6 +206,14 @@ export default function LoginPage() {
                             ? 'Sign in to continue your wellness journey'
                             : 'Start your mental wellness journey today'
                         }</p>
+                    </div>
+
+                    <div className="google-auth-container">
+                        <div id="google-signin-btn" className="google-btn-slot"></div>
+                    </div>
+
+                    <div className="auth-divider">
+                        <span>or continue with email</span>
                     </div>
 
                     <form onSubmit={handleSubmit} className="auth-form" noValidate>
