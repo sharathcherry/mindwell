@@ -24,7 +24,10 @@ export default function ChatBubble({ message, isUser, timestamp, voiceEmotion, e
             {!isUser && <span className="ai-avatar">🧠</span>}
             <div className={`chat-bubble ${isUser ? 'user' : 'ai'}`}>
                 <div className="bubble-content">
-                    <p>{message}</p>
+                    <p>
+                        {message}
+                        {!isUser && !message && <span className="streaming-pulse">...</span>}
+                    </p>
                     <div className="bubble-meta">
                         {!isUser && fusion?.isMaskedDistress && (
                             <span className="fusion-tag masked-distress" title="Tier-2 Multimodal Fusion detected vocal strain">

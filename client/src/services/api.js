@@ -73,28 +73,96 @@ export async function authenticatedFetch(endpoint, options = {}) {
 }
 
 export const chatApi = {
-    sendMessage: async (message, conversationHistory, userContext) => {
-        try {
-            const response = await authenticatedFetch('/chat', {
-                method: 'POST',
-                body: JSON.stringify({
-                    message,
-                    conversationHistory,
-                    userContext,
-                }),
-            });
+    /**
+     * Streaming chat — calls onDelta(text) for each token as it arrives.
+     * Returns final metadata { fusion, provider, insights, contextUpdates } when stream ends.
+     */
+    sendMessageStream: async (message, conversationHistory, userContext, onDelta) => {
+        const url = `${API_BASE}/chat`;
+        let token = getToken();
 
-            if (!response.ok) {
-                throw new Error(await parseErrorResponse(response, 'Failed to get response'));
+        const headers = { 'Content-Type': 'application/json' };
+        if (token) headers.Authorization = `Bearer ${token}`;
+
+        let response = await fetch(url, {
+            method: 'POST',
+            headers,
+            credentials: 'include',
+            body: JSON.stringify({ message, conversationHistory, userContext }),
+        });
+
+        // 401 Token Refresh Interceptor for Streaming
+        if (response.status === 401) {
+            try {
+                const refreshResult = await authRefresh();
+                token = refreshResult?.accessToken || getToken();
+                if (token) {
+                    headers.Authorization = `Bearer ${token}`;
+                    response = await fetch(url, {
+                        method: 'POST',
+                        headers,
+                        credentials: 'include',
+                        body: JSON.stringify({ message, conversationHistory, userContext }),
+                    });
+                }
+            } catch (refErr) {
+                console.warn('Stream token refresh failed:', refErr);
             }
-
-            return await response.json();
-        } catch (error) {
-            console.error('Chat API error:', error);
-            throw error;
         }
+
+        if (!response.ok) {
+            throw new Error(await parseErrorResponse(response, 'Failed to get response'));
+        }
+
+        const reader = response.body.getReader();
+        const decoder = new TextDecoder();
+        let buffer = '';
+        let metadata = {};
+
+        while (true) {
+            const { done, value } = await reader.read();
+            if (done) break;
+
+            buffer += decoder.decode(value, { stream: true });
+            const lines = buffer.split('\n');
+            buffer = lines.pop(); // keep incomplete line
+
+            let eventType = null;
+            for (const line of lines) {
+                if (line.startsWith('event: ')) {
+                    eventType = line.slice(7).trim();
+                } else if (line.startsWith('data: ')) {
+                    try {
+                        const payload = JSON.parse(line.slice(6));
+                        if (eventType === 'delta' && payload.delta) {
+                            onDelta(payload.delta);
+                        } else if (eventType === 'done') {
+                            metadata = payload;
+                        } else if (eventType === 'error') {
+                            throw new Error(payload.error || 'Stream error');
+                        }
+                    } catch (e) {
+                        if (e.message !== 'Stream error' && !e.message.includes('JSON')) throw e;
+                    }
+                    eventType = null;
+                }
+            }
+        }
+
+        return metadata;
+    },
+
+    // Non-streaming fallback (kept for compatibility)
+    sendMessage: async (message, conversationHistory, userContext) => {
+        const response = await authenticatedFetch('/chat', {
+            method: 'POST',
+            body: JSON.stringify({ message, conversationHistory, userContext }),
+        });
+        if (!response.ok) throw new Error(await parseErrorResponse(response, 'Failed to get response'));
+        return await response.json();
     },
 };
+
 
 export const reportsApi = {
     generateTherapyReport: async (userContext, conversationHistory, moods) => {

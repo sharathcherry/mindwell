@@ -273,6 +273,103 @@ export async function chatWithAI(message, conversationHistory = [], userContext 
     };
 }
 
+/**
+ * Streaming version of chatWithAI — pipes tokens directly to an SSE response writer.
+ * onToken(chunk) is called for each text delta.
+ * Returns metadata (fusion, provider) after stream completes.
+ */
+export async function streamChatWithAI(message, conversationHistory = [], userContext = {}, onToken) {
+    const [rawAnalysis] = await Promise.all([analyzeMessageAsync(message)]);
+    const analysis = mergeVoiceEmotion(rawAnalysis, userContext);
+    const enrichedContext = { ...userContext, fusion: analysis.fusion, hfEmotion: rawAnalysis.hfClassification || null };
+
+    // Fast keyword crisis check — skip LLM triage for normal messages
+    if (analysis.hasCrisisIndicator) {
+        const crisisAssessment = await assessCrisisRisk(message, conversationHistory, enrichedContext, analysis);
+        if (crisisAssessment.hasCrisisIndicator) {
+            const crisisResp = buildCrisisResponse(enrichedContext, crisisAssessment);
+            onToken(crisisResp.message);
+            return { fusion: analysis.fusion, provider: 'crisis-engine' };
+        }
+    }
+
+    const providers = getProviderCascade();
+
+    if (providers.length === 0) {
+        const fallback = getFallbackResponse(message, analysis, enrichedContext);
+        onToken(fallback.message);
+        return { fusion: analysis.fusion, provider: 'fallback' };
+    }
+
+    const systemPrompt = getSystemPrompt(enrichedContext);
+    const messages = [{ role: 'system', content: systemPrompt }];
+    for (const msg of conversationHistory.slice(-8)) {
+        messages.push({ role: msg.role === 'assistant' ? 'assistant' : 'user', content: msg.content });
+    }
+    messages.push({ role: 'user', content: message });
+
+    for (const provider of providers) {
+        try {
+            const controller = new AbortController();
+            const timeoutId = setTimeout(() => controller.abort(), 12000);
+
+            const response = await fetch(provider.apiUrl, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${provider.apiKey}` },
+                body: JSON.stringify({ model: provider.model, messages, temperature: 0.7, max_tokens: 300, stream: true }),
+                signal: controller.signal,
+            });
+            clearTimeout(timeoutId);
+
+            if (!response.ok) {
+                console.warn(`[Stream Cascade] ${provider.name} HTTP ${response.status}. Cascading...`);
+                continue;
+            }
+
+            // Read SSE chunks from provider and forward to client
+            const decoder = new TextDecoder();
+            let buffer = '';
+            let fullText = '';
+
+            for await (const chunk of response.body) {
+                buffer += decoder.decode(chunk, { stream: true });
+                const lines = buffer.split('\n');
+                buffer = lines.pop(); // Keep incomplete line in buffer
+
+                for (const line of lines) {
+                    const trimmed = line.trim();
+                    if (!trimmed || trimmed === 'data: [DONE]') continue;
+                    if (!trimmed.startsWith('data: ')) continue;
+                    try {
+                        const json = JSON.parse(trimmed.slice(6));
+                        const delta = json.choices?.[0]?.delta?.content;
+                        if (delta) {
+                            fullText += delta;
+                            onToken(delta);
+                        }
+                    } catch { /* skip malformed SSE lines */ }
+                }
+            }
+
+            if (!fullText.trim()) {
+                console.warn(`[Stream Cascade] ${provider.name} returned empty stream. Cascading...`);
+                continue;
+            }
+
+            const { insights, contextUpdates } = extractTherapyInsights(message);
+            return { fusion: analysis.fusion, provider: provider.provider, insights, contextUpdates };
+        } catch (error) {
+            console.warn(`[Stream Cascade] ${provider.name} error: ${error.message}. Cascading...`);
+            continue;
+        }
+    }
+
+    // All streaming providers failed — send fallback as single token
+    const fallback = getFallbackResponse(message, analysis, enrichedContext);
+    onToken(fallback.message);
+    return { fusion: analysis.fusion, provider: 'fallback' };
+}
+
 export async function generateTherapyReport(userContext = {}, conversationHistory = [], moods = []) {
     const providers = getProviderCascade();
     if (providers.length === 0) {

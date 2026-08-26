@@ -75,6 +75,10 @@ export default function ChatPage() {
         setIsLoading(true);
         setError(null);
 
+        // Insert a live streaming bubble immediately
+        const streamingMsg = { role: 'assistant', content: '', timestamp: new Date().toISOString(), streaming: true };
+        setMessages(prev => [...prev, streamingMsg]);
+
         try {
             const userContext = {
                 ...userContextStorage.get(),
@@ -84,38 +88,53 @@ export default function ChatPage() {
                 allAcousticEmotions: currentEmotion?.allEmotions,
                 acousticBiomarkers: currentEmotion?.biomarkers,
             };
-            const response = await chatApi.sendMessage(
+
+            let accumulated = '';
+            const metadata = await chatApi.sendMessageStream(
                 userMessage.content,
                 messages,
-                userContext
+                userContext,
+                (delta) => {
+                    accumulated += delta;
+                    // Update the last (streaming) message in place
+                    setMessages(prev => {
+                        const updated = [...prev];
+                        updated[updated.length - 1] = {
+                            ...updated[updated.length - 1],
+                            content: accumulated,
+                        };
+                        return updated;
+                    });
+                }
             );
 
+            // Finalize: remove streaming flag, save to storage
             const aiMessage = {
                 role: 'assistant',
-                content: response.message,
+                content: accumulated,
                 timestamp: new Date().toISOString(),
-                fusion: response.fusion,
+                fusion: metadata.fusion,
+                streaming: false,
             };
-
-            setMessages(prev => [...prev, aiMessage]);
+            setMessages(prev => {
+                const updated = [...prev];
+                updated[updated.length - 1] = aiMessage;
+                return updated;
+            });
             conversationStorage.addMessage(aiMessage);
 
-            if (response.insights) {
-                response.insights.forEach(insight => {
-                    userContextStorage.addInsight(insight);
-                });
-            }
-
-            if (response.contextUpdates) {
-                userContextStorage.update(response.contextUpdates);
-            }
+            if (metadata.insights) metadata.insights.forEach(i => userContextStorage.addInsight(i));
+            if (metadata.contextUpdates) userContextStorage.update(metadata.contextUpdates);
         } catch (err) {
+            // Remove the empty streaming bubble on error
+            setMessages(prev => prev.slice(0, -1));
             setError('Unable to connect to the server. Please make sure the backend is running.');
             console.error('Chat error:', err);
         } finally {
             setIsLoading(false);
         }
     };
+
 
     // Handle voice recording result from Tier-1 Acoustic SER
     const handleVoiceResult = (result) => {
@@ -164,6 +183,10 @@ export default function ChatPage() {
         setIsLoading(true);
         setError(null);
 
+        // Insert a live streaming bubble immediately
+        const streamingMsg = { role: 'assistant', content: '', timestamp: new Date().toISOString(), streaming: true };
+        setMessages(prev => [...prev, streamingMsg]);
+
         try {
             const userContext = {
                 ...userContextStorage.get(),
@@ -174,33 +197,51 @@ export default function ChatPage() {
                 acousticBiomarkers: biomarkers,
             };
 
-            const response = await chatApi.sendMessage(
+            let accumulated = '';
+            const metadata = await chatApi.sendMessageStream(
                 text,
                 messages,
-                userContext
+                userContext,
+                (delta) => {
+                    accumulated += delta;
+                    setMessages(prev => {
+                        const updated = [...prev];
+                        updated[updated.length - 1] = {
+                            ...updated[updated.length - 1],
+                            content: accumulated,
+                        };
+                        return updated;
+                    });
+                }
             );
 
             const aiMessage = {
                 role: 'assistant',
-                content: response.message,
+                content: accumulated,
                 timestamp: new Date().toISOString(),
-                fusion: response.fusion,
+                fusion: metadata.fusion,
+                streaming: false,
             };
 
-            setMessages(prev => [...prev, aiMessage]);
+            setMessages(prev => {
+                const updated = [...prev];
+                updated[updated.length - 1] = aiMessage;
+                return updated;
+            });
             conversationStorage.addMessage(aiMessage);
             setDetectedEmotion(null);
 
-            if (response.insights) {
-                response.insights.forEach(insight => {
+            if (metadata.insights) {
+                metadata.insights.forEach(insight => {
                     userContextStorage.addInsight(insight);
                 });
             }
 
-            if (response.contextUpdates) {
-                userContextStorage.update(response.contextUpdates);
+            if (metadata.contextUpdates) {
+                userContextStorage.update(metadata.contextUpdates);
             }
         } catch (err) {
+            setMessages(prev => prev.slice(0, -1));
             setError('Unable to connect. Please check if all servers are running.');
             console.error('Chat error:', err);
         } finally {
