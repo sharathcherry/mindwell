@@ -42,7 +42,7 @@ export async function classifyTextEmotionHuggingFace(message, customToken = null
 
     try {
         const controller = new AbortController();
-        const timeout = setTimeout(() => controller.abort(), 3500);
+        const timeout = setTimeout(() => controller.abort(), 1500); // tight timeout — don't block chat
 
         const response = await fetch('https://router.huggingface.co/hf-inference/models/j-hartmann/emotion-english-distilroberta-base', {
             method: 'POST',

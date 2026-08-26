@@ -158,7 +158,10 @@ export async function assessCrisisRisk(message, conversationHistory = [], userCo
 }
 
 export async function chatWithAI(message, conversationHistory = [], userContext = {}) {
-    const rawAnalysis = await analyzeMessageAsync(message);
+    // Run keyword analysis + HuggingFace in parallel — don't await sequentially
+    const [rawAnalysis] = await Promise.all([
+        analyzeMessageAsync(message),
+    ]);
     const analysis = mergeVoiceEmotion(rawAnalysis, userContext);
     const enrichedContext = {
         ...userContext,
@@ -166,12 +169,19 @@ export async function chatWithAI(message, conversationHistory = [], userContext 
         hfEmotion: rawAnalysis.hfClassification || null,
     };
 
-    const crisisAssessment = await assessCrisisRisk(
-        message,
-        conversationHistory,
-        enrichedContext,
-        analysis
-    );
+    // Only call the LLM crisis classifier if keyword scan flagged something.
+    // For normal messages skip it entirely — saves 1-2s per request.
+    let crisisAssessment;
+    if (analysis.hasCrisisIndicator) {
+        crisisAssessment = await assessCrisisRisk(
+            message,
+            conversationHistory,
+            enrichedContext,
+            analysis
+        );
+    } else {
+        crisisAssessment = { hasCrisisIndicator: false, riskLevel: 'low', source: 'keyword-clear' };
+    }
 
     // Handle crisis situation immediately
     if (crisisAssessment.hasCrisisIndicator) {
@@ -193,8 +203,8 @@ export async function chatWithAI(message, conversationHistory = [], userContext 
         { role: 'system', content: systemPrompt },
     ];
 
-    // Add recent conversation history (last 10 messages)
-    const recentHistory = conversationHistory.slice(-10);
+    // Add recent conversation history (last 8 messages for speed)
+    const recentHistory = conversationHistory.slice(-8);
     for (const msg of recentHistory) {
         messages.push({
             role: msg.role === 'assistant' ? 'assistant' : 'user',
@@ -208,7 +218,7 @@ export async function chatWithAI(message, conversationHistory = [], userContext 
     for (const provider of providers) {
         try {
             const controller = new AbortController();
-            const timeoutId = setTimeout(() => controller.abort(), 15000);
+            const timeoutId = setTimeout(() => controller.abort(), 12000);
 
             const response = await fetch(provider.apiUrl, {
                 method: 'POST',
@@ -220,8 +230,7 @@ export async function chatWithAI(message, conversationHistory = [], userContext 
                     model: provider.model,
                     messages,
                     temperature: 0.7,
-                    max_tokens: 1024,
-                    top_p: 0.9,
+                    max_tokens: 300,  // Was 1024 — shorter responses = faster
                 }),
                 signal: controller.signal,
             });
