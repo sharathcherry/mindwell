@@ -9,9 +9,9 @@ const __dirname = path.dirname(__filename);
 // Ensure .env is loaded from server directory if not already set
 dotenv.config({ path: path.resolve(__dirname, '.env') });
 
-// Fallback to local SQLite database if DATABASE_URL is not set
+// Fallback to Supabase pooler PostgreSQL database if DATABASE_URL is not set
 if (!process.env.DATABASE_URL) {
-    process.env.DATABASE_URL = 'file:./dev.db';
+    process.env.DATABASE_URL = 'postgresql://postgres.ctiyillvkllszcawzwjm:Sharath%4003030@aws-1-ap-south-1.pooler.supabase.com:6543/postgres?pgbouncer=true&connection_limit=1';
 }
 
 const globalForPrisma = globalThis;

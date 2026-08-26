@@ -15,7 +15,7 @@ async function runDbTests() {
         console.log(`PASS [${passed}]: Database health check returned ${health.status} (${health.engine})`);
     }
 
-    // Test 2: Query Seeded Demo User
+    // Test 2: Query / Seed Demo User
     let demoUser;
     {
         demoUser = await prisma.user.findUnique({
@@ -29,6 +29,56 @@ async function runDbTests() {
                 journalEntries: true,
             },
         });
+
+        if (!demoUser) {
+            demoUser = await prisma.user.create({
+                data: {
+                    email: 'demo@mindwell.local',
+                    name: 'Demo User',
+                    passwordHash: await bcrypt.hash('Password123!', 10),
+                    role: 'user',
+                    conversations: {
+                        create: [{
+                            title: 'Initial Check-in',
+                            messages: {
+                                create: [
+                                    {
+                                        role: 'user',
+                                        content: 'I have been feeling overwhelmed lately.',
+                                        detectedEmotion: 'sadness',
+                                        emotionConfidence: 0.88,
+                                        acousticTelemetry: JSON.stringify({ pitch_f0_hz: 210.5, rms_energy: 0.32 }),
+                                        fusion: JSON.stringify({ isMaskedDistress: true, primaryEmotion: 'sadness' }),
+                                    },
+                                    {
+                                        role: 'assistant',
+                                        content: 'I am here with you. Let us take things one step at a time.',
+                                    },
+                                ],
+                            },
+                        }],
+                    },
+                    moodLogs: {
+                        create: [
+                            { mood: 2, emoji: '😔', tags: 'stressed,work', notes: 'Busy week' },
+                            { mood: 4, emoji: '🙂', tags: 'relieved,walk', notes: 'Took a break' },
+                        ],
+                    },
+                    journalEntries: {
+                        create: [
+                            { title: 'Morning Thoughts', content: 'Feeling ready to start today.', moodTag: 'hopeful' },
+                            { title: 'Evening Reflection', content: 'Mindful breathing helped today.', moodTag: 'calm' },
+                        ],
+                    },
+                },
+                include: {
+                    sessions: true,
+                    conversations: { include: { messages: true } },
+                    moodLogs: true,
+                    journalEntries: true,
+                },
+            });
+        }
 
         assert.ok(demoUser, 'Demo user must exist');
         assert.equal(demoUser.email, 'demo@mindwell.local');

@@ -10,14 +10,15 @@ export default async function handler(req, res) {
 
     try {
         const { generateTherapyReport, generateLifestyleReport } = await import('../../server/services/nvidia.js');
-        const { userContext, conversationHistory, moods } = req.body || {};
+        const { userContext, conversationHistory, moods, journals } = req.body || {};
 
         const ctx = isPlainObject(userContext) ? userContext : {};
         const history = normalizeArray(conversationHistory, 50);
         const moodLogs = normalizeArray(moods, 50);
+        const journalLogs = normalizeArray(journals, 50);
 
         if (type === 'lifestyle') {
-            const report = await generateLifestyleReport(ctx, history, moodLogs);
+            const report = await generateLifestyleReport(ctx, moodLogs, journalLogs);
             return res.status(200).json(report);
         } else {
             const report = await generateTherapyReport(ctx, history, moodLogs);
