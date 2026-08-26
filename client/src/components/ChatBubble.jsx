@@ -26,11 +26,6 @@ export default function ChatBubble({ message, isUser, timestamp, voiceEmotion, e
                 <div className="bubble-content">
                     <p>{message}</p>
                     <div className="bubble-meta">
-                        {isUser && voiceEmotion && (
-                            <span className="voice-emotion-tag" title="Tier-1 Acoustic SER Detection">
-                                {getEmotionEmoji(voiceEmotion)} {voiceEmotion} {emotionConfidence ? `(${Math.round(emotionConfidence * 100)}%)` : ''}
-                            </span>
-                        )}
                         {!isUser && fusion?.isMaskedDistress && (
                             <span className="fusion-tag masked-distress" title="Tier-2 Multimodal Fusion detected vocal strain">
                                 💜 Tone-attuned response
