@@ -33,6 +33,23 @@ export function getSystemPrompt(userContext = {}) {
     // Add personalization based on user context
     let personalizedContext = '';
 
+    // Multimodal Acoustic Telemetry (Tier-1 + Tier-2 Fusion)
+    if (userContext.fusion) {
+        const { fusion } = userContext;
+        personalizedContext += `\n\n## Real-Time Vocal Telemetry (Multimodal Acoustic Analysis):`;
+        if (fusion.isMaskedDistress) {
+            personalizedContext += `\n- ⚠️ **MASKED DISTRESS DETECTED**: The user's words appear calm or minimizing, but acoustic neural network analysis of their voice detected genuine ${fusion.primaryEmotion || 'distress'} (calibrated acoustic confidence: ${(fusion.confidence * 100).toFixed(0)}%).`;
+            personalizedContext += `\n- **Guidance**: Gently validate their emotional state. Do not challenge them confrontationally, but gently let them know it is safe to be honest about how heavy things feel (e.g., "I hear what you're saying, but I can also sense a lot of heaviness in your voice. You don't have to carry it all by yourself.").`;
+        } else if (fusion.isSarcasticStrain) {
+            personalizedContext += `\n- ⚠️ **VOCAL STRAIN / SARCASM**: High vocal tension/frustration detected despite positive text phrasing.`;
+        } else if (fusion.primaryEmotion && fusion.primaryEmotion !== 'neutral') {
+            personalizedContext += `\n- **Acoustic Vocal Emotion**: ${fusion.primaryEmotion} (${(fusion.confidence * 100).toFixed(0)}% calibrated confidence).`;
+            personalizedContext += `\n- **Guidance**: Match their vocal tone with appropriate warmth, pacing, and validation.`;
+        }
+    } else if (userContext.detectedVoiceEmotion) {
+        personalizedContext += `\n\n## Voice Emotion Detected: ${userContext.detectedVoiceEmotion} (${Math.round((userContext.emotionConfidence || 0.6) * 100)}% confidence).`;
+    }
+
     if (userContext.sessionCount > 0) {
         personalizedContext += `\n\n## Known Context About This User:`;
 

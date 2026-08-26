@@ -1,0 +1,84 @@
+// MindWell Prisma Database Schema
+// Supports SQLite (zero-config local dev) and PostgreSQL (Neon/Supabase/Cloud production)
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+model User {
+  id             String         @id @default(uuid())
+  email          String         @unique
+  passwordHash   String
+  name           String?
+  role           String         @default("user")
+  timezone       String?
+  locale         String?
+  createdAt      DateTime       @default(now())
+  updatedAt      DateTime       @updatedAt
+  sessions       Session[]
+  conversations  Conversation[]
+  moodLogs       MoodLog[]
+  journalEntries JournalEntry[]
+}
+
+model Session {
+  id                String    @id @default(uuid())
+  userId            String
+  tokenHash         String    @unique
+  deviceFingerprint String?
+  expiresAt         DateTime
+  createdAt         DateTime  @default(now())
+  revokedAt         DateTime?
+  user              User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+model Conversation {
+  id        String        @id @default(uuid())
+  userId    String
+  title     String
+  createdAt DateTime      @default(now())
+  updatedAt DateTime      @updatedAt
+  user      User          @relation(fields: [userId], references: [id], onDelete: Cascade)
+  messages  ChatMessage[]
+}
+
+model ChatMessage {
+  id                 String       @id @default(uuid())
+  conversationId     String
+  role               String
+  content            String
+  detectedEmotion    String?
+  emotionConfidence  Float?
+  acousticTelemetry  String?
+  fusion             String?
+  createdAt          DateTime     @default(now())
+  conversation       Conversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+}
+
+model MoodLog {
+  id        String   @id @default(uuid())
+  userId    String
+  mood      Int
+  emoji     String?
+  tags      String?
+  notes     String?
+  timestamp DateTime @default(now())
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+model JournalEntry {
+  id        String   @id @default(uuid())
+  userId    String
+  title     String
+  prompt    String?
+  content   String
+  moodTag   String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+}

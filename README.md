@@ -1,38 +1,92 @@
-# 🧠 MindWell - Agentic Mental Therapy Bot
+# 🧠 MindWell - Multimodal AI Mental Wellness Platform
 
-An AI-powered mental wellness web application with agentic capabilities, voice emotion detection, mood tracking, journaling, guided exercises, and personalized PDF reports.
+An AI-powered mental wellness companion built on a **Two-Tier Multimodal Fusion Architecture** combining PyTorch-accelerated Acoustic Speech Emotion Recognition (SER) with Contextual Multimodal Intelligence (Gemini 2.0 Flash / Groq Llama 3.3), deterministic safety guardrails, mood tracking, guided CBT exercises, and downloadable clinical wellness PDF reports.
 
-![MindWell](https://img.shields.io/badge/MindWell-Mental%20Wellness-7c3aed?style=for-the-badge)
+![MindWell](https://img.shields.io/badge/MindWell-Multimodal%20Wellness-7c3aed?style=for-the-badge)
+
+---
+
+## 🏛️ Two-Tier Multimodal Fusion Architecture
+
+MindWell utilizes a dual-engine architecture to overcome the classic *"I'm fine"* failure mode (where a user's spoken words claim they are okay while their vocal acoustics reveal deep distress):
+
+```
+                       ┌─────────────────────────┐
+                       │  User Audio Input (.wav)│
+                       └────────────┬────────────┘
+                                    │
+               ┌────────────────────┴────────────────────┐
+               ▼                                         ▼
+   ┌───────────────────────┐                 ┌───────────────────────┐
+   │ TIER 1: Acoustic SER  │                 │ TIER 2: Multimodal    │
+   │ (PyTorch + CUDA GPU)  │                 │ Intelligence (Gemini) │
+   └───────────┬───────────┘                 └───────────┬───────────┘
+               │                                         │
+               │ • Softmax Probabilities                 │ • Semantic Context
+               │ • Physical Biomarkers (RMS/ZCR)         │ • Sarcasm & Masked Distress
+               │ • Calibrated Confidence %               │ • Psychological Nuance
+               │                                         │
+               └────────────────────┬────────────────────┘
+                                    ▼
+                     ┌─────────────────────────────┐
+                     │   Fusion Arbiter (Backend)  │
+                     │  • Mismatch Detection       │
+                     │  • Tone-Attuned AI Guidance │
+                     └──────────────┬──────────────┘
+                                    ▼
+                     Personalized Therapeutic Response
+```
+
+1. **Tier 1 (Acoustic Biomarker Layer - FastAPI & PyTorch):**
+   - Extracts mathematical probability distributions (`sadness`, `happiness`, `anger`, `neutral`) directly from 16kHz audio waveforms using deep acoustic transformers (`superb/hubert-base-superb-er`).
+   - Computes physical vocal biomarkers: RMS vocal energy, Zero Crossing Rate (pitch instability), and autonomic arousal.
+   - Transcribes audio via Groq Whisper Large v3.
+2. **Tier 2 (Contextual Fusion Layer - Node/Express & Gemini 2.0 / Groq):**
+   - Cross-references semantic transcript content against acoustic vocal telemetry.
+   - Detects **Masked Distress / Emotional Suppression** (e.g. positive text with acute acoustic distress).
+   - Generates tone-attuned, empathetic conversational guidance.
+
+---
 
 ## ✨ Features
 
-### 💬 AI Chat with Voice Emotion Detection
-- 🎤 **Voice Input**: Speak to MindWell using your microphone
-- 🧠 **Emotion Detection**: Whisper (speech-to-text) + SpeechBrain SER (emotion from voice)
-- Detects: sadness, anger, happiness, neutral with confidence scores
-- **Groq Cloud AI** for lightning-fast intelligent responses (Llama 3.3 70B)
-- Crisis detection with immediate resources
+### 💬 Multimodal Voice & Chat Companion
+- 🎤 **Voice Input**: Speak naturally using microphone or audio file upload.
+- 🧠 **Deep Acoustic SER**: Real-time PyTorch inference with CUDA GPU acceleration.
+- 💜 **Masked Distress Detection**: Alerts the AI when vocal strain contradicts minimizing words.
+- 🛡️ **Deterministic Crisis Triage**: Sub-50ms fail-safe keyword filters + zero-shot triage classifier with localized hotline routing.
 
-### 🎭 Mood Tracker
-- Emoji-based mood logging with notes
-- 30-day history and statistics
+### 🎭 Mood Tracker & Visual Analytics
+- Emoji-based mood logging with custom notes and tags.
+- Recharts-powered 14-day and 30-day interactive mood trend graphs.
 
-### 📝 Journal
-- Write entries with guided prompts
-- Search functionality
+### 📝 Guided Journaling
+- Cognitive reframing and guided prompt templates.
+- Client-side fast search and emotional tagging.
 
-### 🧘 Guided Exercises
-- Box Breathing, 5-4-3-2-1 Grounding
-- Body Scan, CBT Thought Challenge
+### 🧘 Interactive Exercises
+- Box Breathing with animated pacing circles.
+- 5-4-3-2-1 Grounding technique.
+- CBT Thought Record reframing tool.
 
-### 📄 PDF Reports
-- Therapy Recommendations
-- Lifestyle Wellness Plan
-- Progress Summary
+### 📄 Downloadable PDF Reports (`jspdf`)
+- **Therapy Recommendations**: Tailored modality suggestions (CBT, MBCT, ACT).
+- **Lifestyle Wellness Plan**: Personalized sleep hygiene, exercise, and nutrition guides.
+- **Progress Summary**: Statistical breakdown of streaks, average mood, and journal insights.
 
-### 🆘 Crisis Resources
-- International hotlines
-- Quick calming techniques
+---
+
+## 🛠️ Tech Stack
+
+| Layer | Technology |
+|---|---|
+| **Frontend** | React 19, Vite, Lucide Icons, Recharts, Framer Motion |
+| **PDF Generation** | jsPDF (Client-side rendering & download) |
+| **API Server** | Node.js + Express (ES Modules) |
+| **Audio & ML Engine** | FastAPI, PyTorch (CUDA 12.4), Transformers (HuBERT / wav2vec2), SoundFile, FFmpeg |
+| **Cloud Speech-to-Text** | Groq Cloud (Whisper Large v3) |
+| **Multimodal LLM** | Google Gemini 2.0 Flash / Groq Cloud (Llama 3.3 70B) |
+| **Local Persistence** | Web Crypto PBKDF2 + LocalStorage |
 
 ---
 
@@ -40,89 +94,49 @@ An AI-powered mental wellness web application with agentic capabilities, voice e
 
 ### Prerequisites
 - Node.js 18+
-- Python 3.9+ (for voice features)
-- **Groq API key** (Recommended for fast AI responses)
-- NVIDIA API key (Optional fallback)
+- Python 3.10+ (with PyTorch and CUDA recommended)
+- **Gemini API Key** (Free via [Google AI Studio](https://aistudio.google.com/)) OR **Groq API Key** (Free via [Groq Console](https://console.groq.com/))
 
-### Installation
+### Installation & Setup
 
-1. **Set up the Node.js backend**
+1. **Node.js API Server**
    ```bash
-   cd mindwell/server
+   cd server
    npm install
    cp .env.example .env
-   # Add your GROQ_API_KEY to .env
+   # Add your GEMINI_API_KEY or GROQ_API_KEY to server/.env
+   npm run dev
    ```
 
-2. **Set up the frontend**
+2. **Python Tier-1 Audio Service**
    ```bash
-   cd mindwell/client
-   npm install
-   ```
-
-3. **Set up Python audio backend** (for voice features)
-   ```bash
-   cd mindwell/python_audio
+   cd python_audio
    pip install -r requirements.txt
+   python main.py
    ```
 
-### Environment Variables
+3. **React Frontend**
+   ```bash
+   cd client
+   npm install
+   npm run dev
+   ```
 
-Backend (`server/.env`):
-
-- `PORT` - API port, defaults to `3001`
-- `GROQ_API_KEY` - preferred LLM provider
-- `NVIDIA_API_KEY` - fallback LLM provider
-- `CLIENT_ORIGINS` - comma-separated CORS allow list, defaults to local Vite dev hosts
-
-Frontend (`client/.env`):
-
-- `VITE_API_BASE_URL` - optional override for the chat/report API base path
-- `VITE_AUDIO_API_URL` - optional override for the voice processing endpoint
-
-If you are running locally, you can leave these unset and use the default Vite proxy setup.
-
-### Running the App
-
-**Terminal 1** - Node.js backend:
-```bash
-cd server && npm run dev
-```
-
-**Terminal 2** - Frontend:
-```bash
-cd client && npm run dev
-```
-
-**Terminal 3** - Python audio API (for voice):
-```bash
-cd python_audio && python main.py
-```
-
-Open http://localhost:5173
+Open `http://localhost:5173` in your browser.
 
 ---
 
-## 🛠️ Tech Stack
+## 🧪 Testing
 
-| Layer | Technology |
-|-------|------------|
-| Frontend | React + Vite |
-| Backend | Express.js + FastAPI |
-| AI Chat | Groq Cloud (Llama 3.3 70B) |
-| Speech-to-Text | Whisper (local) |
-| Emotion Detection | SpeechBrain wav2vec2 |
-| Storage | LocalStorage |
+- **Backend & Fusion Tests:** `cd server && npm test`
+- **Audio ML Unit Tests:** `cd python_audio && python test_audio_endpoint.py`
+- **Frontend Smoke Tests:** `cd client && npm test`
 
 ---
 
 ## ⚠️ Disclaimer
 
-MindWell is an AI companion and is **NOT** a replacement for professional mental health care.
+MindWell is an AI companion for educational and self-reflection purposes and is **NOT** a replacement for licensed medical or clinical psychological care.
 
 **Crisis Contacts:**
-- **US**: 988 | **UK**: 116 123 | **India**: 9152987821
-
----
-
-Built with 💜 for mental wellness
+- **US**: 988 | **UK**: 116 123 | **India**: 112 / 9152987821 | **Canada**: 988 | **International**: [Befrienders Worldwide](https://www.befrienders.org/)

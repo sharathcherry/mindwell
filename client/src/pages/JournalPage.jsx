@@ -1,5 +1,6 @@
-import { useState } from 'react';
-import { journalStorage } from '../utils/storage';
+import { useState, useEffect, useCallback } from 'react';
+import { journalStorage } from '../utils/storage.js';
+import { journalsApi } from '../services/api.js';
 import './JournalPage.css';
 
 const PROMPTS = [
@@ -24,24 +25,77 @@ export default function JournalPage() {
         () => PROMPTS[Math.floor(Math.random() * PROMPTS.length)]
     );
 
-    const loadEntries = () => {
-        setEntries(journalStorage.getAll());
-    };
+    const refreshServerEntries = useCallback(async (query = '') => {
+        try {
+            const serverJournals = await journalsApi.getAll(query);
+            if (Array.isArray(serverJournals)) {
+                setEntries(serverJournals);
+            }
+        } catch {
+            if (query) {
+                setEntries(journalStorage.search(query));
+            } else {
+                setEntries(journalStorage.getAll());
+            }
+        }
+    }, []);
 
-    const handleSave = () => {
+    useEffect(() => {
+        let isMounted = true;
+        journalsApi.getAll(searchQuery)
+            .then(serverJournals => {
+                if (isMounted && Array.isArray(serverJournals)) {
+                    setEntries(serverJournals);
+                }
+            })
+            .catch(() => {
+                // Keep local state
+            });
+
+        return () => {
+            isMounted = false;
+        };
+    }, [searchQuery]);
+
+    const handleSave = async () => {
         if (!title.trim() && !content.trim()) return;
 
+        const effectiveTitle = title.trim() || 'Untitled Entry';
+        const effectiveContent = content.trim();
+
         if (editingId) {
-            journalStorage.update(editingId, { title, content });
+            // Optimistic update
+            journalStorage.update(editingId, { title: effectiveTitle, content: effectiveContent });
+            setEntries(prev => prev.map(e => e.id === editingId ? { ...e, title: effectiveTitle, content: effectiveContent, updatedAt: new Date().toISOString() } : e));
+            try {
+                await journalsApi.update(editingId, { title: effectiveTitle, content: effectiveContent });
+            } catch (err) {
+                console.warn('Failed to update journal on server, kept locally:', err);
+            }
         } else {
-            journalStorage.add({ title, content });
+            // New entry optimistic update
+            const newEntry = {
+                id: String(Date.now()),
+                title: effectiveTitle,
+                content: effectiveContent,
+                createdAt: new Date().toISOString(),
+                updatedAt: new Date().toISOString(),
+            };
+            journalStorage.add(newEntry);
+            setEntries(prev => [newEntry, ...prev]);
+
+            try {
+                await journalsApi.add({ title: effectiveTitle, content: effectiveContent });
+                await refreshServerEntries(searchQuery);
+            } catch (err) {
+                console.warn('Failed to save journal to server, kept locally:', err);
+            }
         }
 
         setTitle('');
         setContent('');
         setIsWriting(false);
         setEditingId(null);
-        loadEntries();
     };
 
     const handleEdit = (entry) => {
@@ -51,10 +105,17 @@ export default function JournalPage() {
         setIsWriting(true);
     };
 
-    const handleDelete = (id) => {
+    const handleDelete = async (id) => {
         if (confirm('Are you sure you want to delete this entry?')) {
+            // Optimistic delete
             journalStorage.delete(id);
-            loadEntries();
+            setEntries(prev => prev.filter(e => e.id !== id));
+
+            try {
+                await journalsApi.delete(id);
+            } catch (err) {
+                console.warn('Failed to delete journal on server:', err);
+            }
         }
     };
 
@@ -63,10 +124,14 @@ export default function JournalPage() {
     };
 
     const filteredEntries = searchQuery
-        ? journalStorage.search(searchQuery)
+        ? entries.filter(j =>
+            j.title?.toLowerCase().includes(searchQuery.toLowerCase()) ||
+            j.content?.toLowerCase().includes(searchQuery.toLowerCase())
+        )
         : entries;
 
     const formatDate = (timestamp) => {
+        if (!timestamp) return '';
         return new Date(timestamp).toLocaleDateString('en-US', {
             weekday: 'long',
             year: 'numeric',

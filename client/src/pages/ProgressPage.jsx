@@ -1,6 +1,7 @@
-import { useMemo } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts';
-import { moodStorage, journalStorage, exerciseStorage, conversationStorage } from '../utils/storage';
+import { moodStorage, journalStorage, exerciseStorage, conversationStorage } from '../utils/storage.js';
+import { moodsApi, journalsApi } from '../services/api.js';
 import './ProgressPage.css';
 
 function processMoodData(moods) {
@@ -19,37 +20,61 @@ function processMoodData(moods) {
     })).slice(-14);
 }
 
-function getProgressSnapshot() {
-    const moods = moodStorage.getLast30Days();
-    const journals = journalStorage.getAll();
-    const exercises = exerciseStorage.getAll();
-    const conversations = conversationStorage.getAll();
-
-    const avgMood = moods.length > 0
-        ? moods.reduce((a, m) => a + m.mood, 0) / moods.length
-        : 0;
-
-    return {
-        moodData: processMoodData(moods),
-        stats: {
-            totalMoods: moods.length,
-            totalJournals: journals.length,
-            totalExercises: exercises.length,
-            totalConversations: conversations.filter(c => c.role === 'user').length,
-            exerciseStreak: exerciseStorage.getStreak(),
-            avgMood: avgMood.toFixed(1),
-        },
-    };
-}
-
 export default function ProgressPage() {
-    const { moodData, stats } = useMemo(() => getProgressSnapshot(), []);
+    const [moods, setMoods] = useState(() => moodStorage.getLast30Days());
+    const [journals, setJournals] = useState(() => journalStorage.getAll());
+    const [exercises, setExercises] = useState(() => exerciseStorage.getAll());
+    const [conversations, setConversations] = useState(() => conversationStorage.getAll());
+
+    useEffect(() => {
+        let isMounted = true;
+
+        Promise.allSettled([
+            moodsApi.getAll({ limit: 30 }),
+            journalsApi.getAll(),
+        ]).then(([moodsResult, journalsResult]) => {
+            if (!isMounted) return;
+            if (moodsResult.status === 'fulfilled' && Array.isArray(moodsResult.value)) {
+                setMoods(moodsResult.value);
+            }
+            if (journalsResult.status === 'fulfilled' && Array.isArray(journalsResult.value)) {
+                setJournals(journalsResult.value);
+            }
+            setExercises(exerciseStorage.getAll());
+            setConversations(conversationStorage.getAll());
+        });
+
+        return () => {
+            isMounted = false;
+        };
+    }, []);
+
+    const snapshot = useMemo(() => {
+        const avgMood = moods.length > 0
+            ? moods.reduce((a, m) => a + m.mood, 0) / moods.length
+            : 0;
+
+        return {
+            moodData: processMoodData(moods),
+            stats: {
+                totalMoods: moods.length,
+                totalJournals: journals.length,
+                totalExercises: exercises.length,
+                totalConversations: conversations.filter(c => c.role === 'user').length,
+                exerciseStreak: exerciseStorage.getStreak(),
+                avgMood: avgMood.toFixed(1),
+            },
+        };
+    }, [moods, journals, exercises, conversations]);
+
+    const { moodData, stats } = snapshot;
 
     const getMoodEmoji = (value) => {
-        if (value >= 4.5) return '😄';
-        if (value >= 3.5) return '🙂';
-        if (value >= 2.5) return '😐';
-        if (value >= 1.5) return '😔';
+        const num = Number(value);
+        if (num >= 4.5) return '😄';
+        if (num >= 3.5) return '🙂';
+        if (num >= 2.5) return '😐';
+        if (num >= 1.5) return '😔';
         return '😢';
     };
 
@@ -154,7 +179,7 @@ export default function ProgressPage() {
             <div className="card tips-card">
                 <h3>💡 Insights</h3>
                 <div className="tips-list">
-                    {stats.avgMood >= 4 && (
+                    {Number(stats.avgMood) >= 4 && (
                         <div className="tip success">
                             <span>✨</span>
                             <p>Your average mood is great! Keep up the positive momentum.</p>

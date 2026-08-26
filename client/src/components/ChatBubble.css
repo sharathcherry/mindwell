@@ -74,14 +74,42 @@
     color: var(--text-primary);
 }
 
+.bubble-meta {
+    display: flex;
+    align-items: center;
+    gap: var(--space-sm);
+    justify-content: space-between;
+    margin-top: 4px;
+}
+
 .bubble-time {
     font-size: 0.7rem;
     color: rgba(255, 255, 255, 0.6);
-    align-self: flex-end;
 }
 
 .chat-bubble.ai .bubble-time {
     color: var(--text-muted);
+}
+
+.voice-emotion-tag {
+    font-size: 0.72rem;
+    background: rgba(255, 255, 255, 0.2);
+    padding: 2px 6px;
+    border-radius: 10px;
+    font-weight: 500;
+}
+
+.fusion-tag {
+    font-size: 0.72rem;
+    padding: 2px 6px;
+    border-radius: 10px;
+    font-weight: 500;
+}
+
+.fusion-tag.masked-distress {
+    background: rgba(124, 58, 237, 0.15);
+    color: var(--accent-primary);
+    border: 1px solid rgba(124, 58, 237, 0.3);
 }
 
 @keyframes fadeIn {

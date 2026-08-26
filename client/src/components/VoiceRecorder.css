@@ -1,7 +1,26 @@
 .voice-recorder {
     display: flex;
+    flex-direction: column;
+    align-items: flex-start;
+    gap: var(--space-xs);
+    padding: var(--space-xs) var(--space-sm);
+    border-radius: var(--radius-sm);
+    border: 1px dashed rgba(139, 119, 101, 0.35);
+    background: var(--bg-secondary);
+    transition: border 0.2s ease, background 0.2s ease;
+    min-width: 120px;
+}
+
+.voice-recorder.drag-active {
+    border-color: var(--accent-primary);
+    background: rgba(79, 70, 229, 0.08);
+    box-shadow: 0 0 0 1px rgba(79, 70, 229, 0.5);
+}
+
+.voice-controls {
+    display: flex;
     align-items: center;
-    gap: var(--space-sm);
+    gap: var(--space-xs);
 }
 
 .voice-btn {
@@ -84,6 +103,42 @@
 .voice-error {
     color: var(--accent-warning);
     cursor: help;
+}
+
+.voice-upload-btn {
+    width: 40px;
+    height: 40px;
+    border-radius: 50%;
+    border: 1px dashed rgba(139, 119, 101, 0.5);
+    background: transparent;
+    font-size: 1.5rem;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: var(--text-primary);
+    cursor: pointer;
+    transition: all 0.2s ease;
+}
+
+.voice-upload-btn:hover:not(:disabled) {
+    border-color: var(--accent-primary);
+    color: var(--accent-primary);
+    transform: scale(1.05);
+}
+
+.voice-upload-btn:disabled {
+    opacity: 0.4;
+    cursor: not-allowed;
+}
+
+.plus-icon {
+    line-height: 1;
+}
+
+.drop-hint {
+    font-size: 0.75rem;
+    color: var(--text-secondary);
+    user-select: none;
 }
 
 /* Emotion badge styling */

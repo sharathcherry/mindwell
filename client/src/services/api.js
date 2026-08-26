@@ -1,6 +1,8 @@
-const API_BASE = import.meta.env.VITE_API_BASE_URL || '/api';
+import { getToken, refresh as authRefresh, logout as authLogout } from './auth.js';
 
-async function parseErrorResponse(response, fallbackMessage) {
+const API_BASE = import.meta.env?.VITE_API_BASE_URL || '/api';
+
+export async function parseErrorResponse(response, fallbackMessage = 'Request failed') {
     try {
         const payload = await response.json();
         return payload?.error || payload?.message || fallbackMessage;
@@ -9,14 +11,72 @@ async function parseErrorResponse(response, fallbackMessage) {
     }
 }
 
+/**
+ * Authenticated fetch helper that injects Bearer token, enables cookies,
+ * and intercepts 401 responses to auto-refresh access token and replay requests.
+ */
+export async function authenticatedFetch(endpoint, options = {}) {
+    const url = endpoint.startsWith('http') ? endpoint : `${API_BASE}${endpoint.startsWith('/') ? '' : '/'}${endpoint}`;
+    const token = getToken();
+
+    const headers = {
+        'Content-Type': 'application/json',
+        ...(options.headers || {}),
+    };
+
+    if (token && !headers.Authorization && !headers.authorization) {
+        headers.Authorization = `Bearer ${token}`;
+    }
+
+    const fetchOptions = {
+        ...options,
+        headers,
+        credentials: options.credentials || 'include',
+    };
+
+    let response;
+    try {
+        response = await fetch(url, fetchOptions);
+    } catch (networkError) {
+        console.error('Network error on request:', networkError);
+        throw networkError;
+    }
+
+    // Automatic 401 Token Refresh Interceptor
+    if (response.status === 401 && !options._retry && !endpoint.includes('/auth/')) {
+        try {
+            const refreshResult = await authRefresh();
+            const newToken = refreshResult?.accessToken || getToken();
+
+            if (newToken) {
+                const retryHeaders = {
+                    ...headers,
+                    Authorization: `Bearer ${newToken}`,
+                };
+
+                const retryOptions = {
+                    ...options,
+                    _retry: true,
+                    headers: retryHeaders,
+                    credentials: 'include',
+                };
+
+                return await fetch(url, retryOptions);
+            }
+        } catch (refreshErr) {
+            console.warn('Auto refresh failed, session expired:', refreshErr);
+            authLogout();
+        }
+    }
+
+    return response;
+}
+
 export const chatApi = {
     sendMessage: async (message, conversationHistory, userContext) => {
         try {
-            const response = await fetch(`${API_BASE}/chat`, {
+            const response = await authenticatedFetch('/chat', {
                 method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json',
-                },
                 body: JSON.stringify({
                     message,
                     conversationHistory,
@@ -28,8 +88,7 @@ export const chatApi = {
                 throw new Error(await parseErrorResponse(response, 'Failed to get response'));
             }
 
-            const data = await response.json();
-            return data;
+            return await response.json();
         } catch (error) {
             console.error('Chat API error:', error);
             throw error;
@@ -40,11 +99,8 @@ export const chatApi = {
 export const reportsApi = {
     generateTherapyReport: async (userContext, conversationHistory, moods) => {
         try {
-            const response = await fetch(`${API_BASE}/reports/therapy`, {
+            const response = await authenticatedFetch('/reports/therapy', {
                 method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json',
-                },
                 body: JSON.stringify({
                     userContext,
                     conversationHistory,
@@ -65,11 +121,8 @@ export const reportsApi = {
 
     generateLifestyleReport: async (userContext, moods, journals) => {
         try {
-            const response = await fetch(`${API_BASE}/reports/lifestyle`, {
+            const response = await authenticatedFetch('/reports/lifestyle', {
                 method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json',
-                },
                 body: JSON.stringify({
                     userContext,
                     moods,
@@ -86,5 +139,164 @@ export const reportsApi = {
             console.error('Lifestyle report API error:', error);
             throw error;
         }
+    },
+};
+
+export const moodsApi = {
+    getAll: async (params = {}) => {
+        const query = new URLSearchParams(params).toString();
+        const endpoint = query ? `/moods?${query}` : '/moods';
+        const response = await authenticatedFetch(endpoint, { method: 'GET' });
+
+        if (!response.ok) {
+            throw new Error(await parseErrorResponse(response, 'Failed to fetch moods'));
+        }
+
+        const data = await response.json();
+        return data.moods || data;
+    },
+
+    add: async (moodData) => {
+        const response = await authenticatedFetch('/moods', {
+            method: 'POST',
+            body: JSON.stringify(moodData),
+        });
+
+        if (!response.ok) {
+            throw new Error(await parseErrorResponse(response, 'Failed to log mood'));
+        }
+
+        const data = await response.json();
+        return data.mood || data.moodLog || data;
+    },
+
+    delete: async (id) => {
+        const response = await authenticatedFetch(`/moods/${id}`, {
+            method: 'DELETE',
+        });
+
+        if (!response.ok) {
+            throw new Error(await parseErrorResponse(response, 'Failed to delete mood'));
+        }
+
+        return await response.json();
+    },
+};
+
+export const journalsApi = {
+    getAll: async (q = '') => {
+        const endpoint = q ? `/journals?q=${encodeURIComponent(q)}` : '/journals';
+        const response = await authenticatedFetch(endpoint, { method: 'GET' });
+
+        if (!response.ok) {
+            throw new Error(await parseErrorResponse(response, 'Failed to fetch journals'));
+        }
+
+        const data = await response.json();
+        return data.journals || data;
+    },
+
+    add: async (entryData) => {
+        const response = await authenticatedFetch('/journals', {
+            method: 'POST',
+            body: JSON.stringify(entryData),
+        });
+
+        if (!response.ok) {
+            throw new Error(await parseErrorResponse(response, 'Failed to save journal entry'));
+        }
+
+        const data = await response.json();
+        return data.journal || data.journalEntry || data;
+    },
+
+    update: async (id, updates) => {
+        const response = await authenticatedFetch(`/journals/${id}`, {
+            method: 'PUT',
+            body: JSON.stringify(updates),
+        });
+
+        if (!response.ok) {
+            throw new Error(await parseErrorResponse(response, 'Failed to update journal entry'));
+        }
+
+        const data = await response.json();
+        return data.journal || data.journalEntry || data;
+    },
+
+    delete: async (id) => {
+        const response = await authenticatedFetch(`/journals/${id}`, {
+            method: 'DELETE',
+        });
+
+        if (!response.ok) {
+            throw new Error(await parseErrorResponse(response, 'Failed to delete journal entry'));
+        }
+
+        return await response.json();
+    },
+};
+
+export const conversationsApi = {
+    getAll: async () => {
+        const response = await authenticatedFetch('/conversations', { method: 'GET' });
+
+        if (!response.ok) {
+            throw new Error(await parseErrorResponse(response, 'Failed to fetch conversations'));
+        }
+
+        const data = await response.json();
+        return data.conversations || data;
+    },
+
+    getMessages: async (id) => {
+        const response = await authenticatedFetch(`/conversations/${id}/messages`, { method: 'GET' });
+
+        if (!response.ok) {
+            throw new Error(await parseErrorResponse(response, 'Failed to fetch messages'));
+        }
+
+        const data = await response.json();
+        return data.messages || data;
+    },
+
+    create: async (conversationData) => {
+        const response = await authenticatedFetch('/conversations', {
+            method: 'POST',
+            body: JSON.stringify(conversationData),
+        });
+
+        if (!response.ok) {
+            throw new Error(await parseErrorResponse(response, 'Failed to create conversation'));
+        }
+
+        const data = await response.json();
+        return data.conversation || data;
+    },
+
+    addMessage: async (id, messageData) => {
+        const response = await authenticatedFetch(`/conversations/${id}/messages`, {
+            method: 'POST',
+            body: JSON.stringify(messageData),
+        });
+
+        if (!response.ok) {
+            throw new Error(await parseErrorResponse(response, 'Failed to save message'));
+        }
+
+        const data = await response.json();
+        return data.message || data;
+    },
+
+    delete: async (id) => {
+        const response = await authenticatedFetch(`/conversations/${id}`, {
+            method: 'DELETE',
+        });
+
+        if (!response.ok) {
+            throw new Error(await parseErrorResponse(response, 'Failed to delete conversation'));
+        }
+
+        return await response.json();
     },
 };

@@ -1,0 +1,117 @@
+version: '3.8'
+
+services:
+  # ----------------------------------------------------------------------------
+  # 1. PostgreSQL 16 Alpine Database
+  # ----------------------------------------------------------------------------
+  postgres:
+    image: postgres:16-alpine
+    container_name: mindwell-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-mindwell}
+      POSTGRES_USER: ${POSTGRES_USER:-mindwell}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-mindwell_secret}
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-mindwell} -d ${POSTGRES_DB:-mindwell}"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+      start_period: 5s
+    networks:
+      - mindwell-network
+
+  # ----------------------------------------------------------------------------
+  # 2. Node.js Express API Server (Prisma ORM + JWT Auth + Multimodal Cascade)
+  # ----------------------------------------------------------------------------
+  server:
+    build:
+      context: ./server
+      dockerfile: Dockerfile
+    container_name: mindwell-server
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      NODE_ENV: production
+      PORT: 3001
+      DATABASE_URL: ${DATABASE_URL:-postgresql://mindwell:mindwell_secret@postgres:5432/mindwell?schema=public}
+      JWT_SECRET: ${JWT_SECRET:-mindwell_production_jwt_secret_minimum_32_characters_long}
+      JWT_REFRESH_SECRET: ${JWT_REFRESH_SECRET:-mindwell_production_refresh_jwt_secret_minimum_32_chars}
+      CLIENT_ORIGINS: ${CLIENT_ORIGINS:-http://localhost:3000,http://localhost:80,http://localhost:5173}
+      GEMINI_API_KEY: ${GEMINI_API_KEY:-}
+      GROQ_API_KEY: ${GROQ_API_KEY:-}
+      NVIDIA_API_KEY: ${NVIDIA_API_KEY:-}
+      AUDIO_API_URL: ${AUDIO_API_URL:-http://python_audio:3002/api/audio/process}
+    ports:
+      - "3001:3001"
+    healthcheck:
+      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:3001/api/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+      start_period: 5s
+    networks:
+      - mindwell-network
+
+  # ----------------------------------------------------------------------------
+  # 3. Python PyTorch Tier-1 Acoustic SER & STT Service
+  # ----------------------------------------------------------------------------
+  python_audio:
+    build:
+      context: ./python_audio
+      dockerfile: Dockerfile
+    container_name: mindwell-audio
+    restart: unless-stopped
+    environment:
+      PORT: 3002
+      GROQ_API_KEY: ${GROQ_API_KEY:-}
+    ports:
+      - "3002:3002"
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:3002/health')"]
+      interval: 15s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
+    networks:
+      - mindwell-network
+
+  # ----------------------------------------------------------------------------
+  # 4. Frontend Client (Vite React 19 + NGINX Production Proxy)
+  # ----------------------------------------------------------------------------
+  frontend:
+    build:
+      context: ./client
+      dockerfile: Dockerfile
+    container_name: mindwell-frontend
+    restart: unless-stopped
+    depends_on:
+      server:
+        condition: service_healthy
+      python_audio:
+        condition: service_healthy
+    ports:
+      - "3000:80"
+      - "80:80"
+    healthcheck:
+      test: ["CMD", "wget", "--quiet", "--tries=1", "--spider", "http://localhost:80/"]
+      interval: 15s
+      timeout: 3s
+      retries: 3
+      start_period: 5s
+    networks:
+      - mindwell-network
+
+volumes:
+  postgres_data:
+    driver: local
+
+networks:
+  mindwell-network:
+    driver: bridge

@@ -11,6 +11,25 @@ const WELCOME_MESSAGE = {
     timestamp: new Date().toISOString(),
 };
 
+function getRuntimeRegionContext() {
+    let locale = 'en-US';
+    let timezone = 'UTC';
+
+    try {
+        if (typeof navigator !== 'undefined' && navigator.language) {
+            locale = navigator.language;
+        }
+        timezone = Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC';
+    } catch {
+        // Keep defaults when browser APIs are unavailable.
+    }
+
+    const localeCountry = locale.includes('-') ? locale.split('-').pop() : '';
+    const countryCode = typeof localeCountry === 'string' ? localeCountry.toUpperCase() : '';
+
+    return { locale, timezone, countryCode };
+}
+
 export default function ChatPage() {
     const [messages, setMessages] = useState([]);
     const [input, setInput] = useState('');
@@ -44,17 +63,27 @@ export default function ChatPage() {
             role: 'user',
             content: input.trim(),
             timestamp: new Date().toISOString(),
+            voiceEmotion: detectedEmotion?.emotion,
+            emotionConfidence: detectedEmotion?.confidence,
         };
 
-        // Add user message
         setMessages(prev => [...prev, userMessage]);
         conversationStorage.addMessage(userMessage);
+        const currentEmotion = detectedEmotion;
         setInput('');
+        setDetectedEmotion(null);
         setIsLoading(true);
         setError(null);
 
         try {
-            const userContext = userContextStorage.get();
+            const userContext = {
+                ...userContextStorage.get(),
+                ...getRuntimeRegionContext(),
+                detectedVoiceEmotion: currentEmotion?.emotion,
+                emotionConfidence: currentEmotion?.confidence,
+                allAcousticEmotions: currentEmotion?.allEmotions,
+                acousticBiomarkers: currentEmotion?.biomarkers,
+            };
             const response = await chatApi.sendMessage(
                 userMessage.content,
                 messages,
@@ -65,19 +94,18 @@ export default function ChatPage() {
                 role: 'assistant',
                 content: response.message,
                 timestamp: new Date().toISOString(),
+                fusion: response.fusion,
             };
 
             setMessages(prev => [...prev, aiMessage]);
             conversationStorage.addMessage(aiMessage);
 
-            // Update user context if AI detected insights
             if (response.insights) {
                 response.insights.forEach(insight => {
                     userContextStorage.addInsight(insight);
                 });
             }
 
-            // Update context with any detected concerns/strategies
             if (response.contextUpdates) {
                 userContextStorage.update(response.contextUpdates);
             }
@@ -89,45 +117,62 @@ export default function ChatPage() {
         }
     };
 
-    // Handle voice recording result
+    // Handle voice recording result from Tier-1 Acoustic SER
     const handleVoiceResult = (result) => {
-        // Set the transcribed text as input
-        setInput(result.text);
+        setInput(result.text || '');
 
-        // Store detected emotion
-        setDetectedEmotion({
+        const emotionInfo = {
             emotion: result.emotion,
-            confidence: result.confidence
-        });
+            confidence: result.confidence,
+            allEmotions: result.all_emotions,
+            biomarkers: result.biomarkers,
+            tier: result.tier,
+        };
 
-        // Auto-submit if we got meaningful text
+        setDetectedEmotion(emotionInfo);
+
+        // Auto-submit if meaningful text was transcribed
         if (result.text && result.text.trim().length > 2) {
-            // Use the voice result directly with emotion context
-            sendMessageWithEmotion(result.text, result.emotion, result.confidence);
+            sendMessageWithEmotion(
+                result.text.trim(),
+                result.emotion,
+                result.confidence,
+                result.all_emotions,
+                result.biomarkers
+            );
         }
     };
 
-    // Send message with voice emotion context
-    const sendMessageWithEmotion = async (text, emotion, confidence) => {
+    // Send message with Tier-1 acoustic emotion telemetry for Tier-2 multimodal fusion
+    const sendMessageWithEmotion = async (text, emotion, confidence, allEmotions, biomarkers) => {
         const userMessage = {
             role: 'user',
             content: text,
             timestamp: new Date().toISOString(),
             voiceEmotion: emotion,
-            emotionConfidence: confidence
+            emotionConfidence: confidence,
+            acousticTelemetry: {
+                allEmotions,
+                biomarkers,
+            },
         };
 
         setMessages(prev => [...prev, userMessage]);
         conversationStorage.addMessage(userMessage);
         setInput('');
+        setDetectedEmotion(null);
         setIsLoading(true);
         setError(null);
 
         try {
-            const userContext = userContextStorage.get();
-            // Add voice emotion to context
-            userContext.detectedVoiceEmotion = emotion;
-            userContext.emotionConfidence = confidence;
+            const userContext = {
+                ...userContextStorage.get(),
+                ...getRuntimeRegionContext(),
+                detectedVoiceEmotion: emotion,
+                emotionConfidence: confidence,
+                allAcousticEmotions: allEmotions,
+                acousticBiomarkers: biomarkers,
+            };
 
             const response = await chatApi.sendMessage(
                 text,
@@ -139,11 +184,22 @@ export default function ChatPage() {
                 role: 'assistant',
                 content: response.message,
                 timestamp: new Date().toISOString(),
+                fusion: response.fusion,
             };
 
             setMessages(prev => [...prev, aiMessage]);
             conversationStorage.addMessage(aiMessage);
             setDetectedEmotion(null);
+
+            if (response.insights) {
+                response.insights.forEach(insight => {
+                    userContextStorage.addInsight(insight);
+                });
+            }
+
+            if (response.contextUpdates) {
+                userContextStorage.update(response.contextUpdates);
+            }
         } catch (err) {
             setError('Unable to connect. Please check if all servers are running.');
             console.error('Chat error:', err);
@@ -152,15 +208,18 @@ export default function ChatPage() {
         }
     };
 
-    // Get emoji for detected emotion
     const getEmotionEmoji = (emotion) => {
         const emojis = {
             sadness: '😢',
+            sad: '😢',
             happiness: '😊',
+            happy: '😊',
             anger: '😠',
+            angry: '😠',
+            fear: '😨',
             neutral: '😐',
         };
-        return emojis[emotion] || '🎭';
+        return emojis[emotion?.toLowerCase()] || '🎭';
     };
 
     const handleClearChat = () => {
@@ -194,6 +253,9 @@ export default function ChatPage() {
                             message={msg.content}
                             isUser={msg.role === 'user'}
                             timestamp={msg.timestamp}
+                            voiceEmotion={msg.voiceEmotion}
+                            emotionConfidence={msg.emotionConfidence}
+                            fusion={msg.fusion}
                         />
                     ))}
 
@@ -228,7 +290,10 @@ export default function ChatPage() {
                         className="chat-input"
                     />
                     {detectedEmotion && (
-                        <span className={`emotion-badge ${detectedEmotion.emotion}`}>
+                        <span
+                            className={`emotion-badge ${detectedEmotion.emotion}`}
+                            title={`Tier-1 Acoustic Model (${detectedEmotion.tier || 'Neural Network'})`}
+                        >
                             {getEmotionEmoji(detectedEmotion.emotion)} {detectedEmotion.emotion}
                             <span className="confidence">({Math.round(detectedEmotion.confidence * 100)}%)</span>
                         </span>

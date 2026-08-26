@@ -3,124 +3,329 @@ import { analyzeMessage, extractTherapyInsights, mergeVoiceEmotion } from './ana
 import { buildCrisisResponse } from './crisis.js';
 import { getFallbackResponse } from './fallback.js';
 
-const AI_API_URL = 'https://api.groq.com/openai/v1/chat/completions';
-const MODEL = 'llama-3.3-70b-versatile';
+/**
+ * Dynamic Provider Cascade Priority Order:
+ * 1. Google Gemini 2.0 Flash (Multimodal, 1500 req/day free)
+ * 2. Groq Llama 3.3 70B (High-speed LPU free tier)
+ * 3. NVIDIA NIM Llama 3.3 70B (Hosted inference free credits)
+ * 4. Local Heuristics / Deterministic Fallbacks
+ */
+export function getProviderCascade() {
+    const providers = [];
+
+    // 1. Google Gemini 2.0 Flash
+    if (process.env.GEMINI_API_KEY) {
+        providers.push({
+            name: 'Gemini 2.0 Flash',
+            apiUrl: 'https://generativelanguage.googleapis.com/v1beta/openai/chat/completions',
+            model: 'gemini-2.0-flash',
+            apiKey: process.env.GEMINI_API_KEY,
+            provider: 'Gemini 2.0 Flash (Multimodal)',
+        });
+    }
+
+    // 2. Groq Llama 3.3 70B
+    if (process.env.GROQ_API_KEY) {
+        providers.push({
+            name: 'Groq Llama 3.3 70B',
+            apiUrl: 'https://api.groq.com/openai/v1/chat/completions',
+            model: 'llama-3.3-70b-versatile',
+            apiKey: process.env.GROQ_API_KEY,
+            provider: 'Groq Cloud (Llama 3.3 70B)',
+        });
+    }
+
+    // 3. NVIDIA NIM
+    if (process.env.NVIDIA_API_KEY) {
+        providers.push({
+            name: 'NVIDIA NIM',
+            apiUrl: 'https://integrate.api.nvidia.com/v1/chat/completions',
+            model: 'meta/llama-3.3-70b-instruct',
+            apiKey: process.env.NVIDIA_API_KEY,
+            provider: 'NVIDIA NIM (Llama 3.3 70B)',
+        });
+    }
+
+    return providers;
+}
+
+export function resolveAIConfig() {
+    const providers = getProviderCascade();
+    return providers.length > 0 ? providers[0] : null;
+}
+
+export function parseAssessmentPayload(content) {
+    if (!content || typeof content !== 'string') {
+        return null;
+    }
+
+    try {
+        return JSON.parse(content);
+    } catch {
+        const start = content.indexOf('{');
+        const end = content.lastIndexOf('}');
+        if (start === -1 || end === -1 || end <= start) {
+            return null;
+        }
+
+        try {
+            return JSON.parse(content.slice(start, end + 1));
+        } catch {
+            return null;
+        }
+    }
+}
+
+export async function assessCrisisRisk(message, conversationHistory = [], userContext = {}, analysis = null) {
+    const keywordTriggered = Boolean(analysis?.hasCrisisIndicator);
+    const providers = getProviderCascade();
+
+    if (providers.length === 0) {
+        return {
+            hasCrisisIndicator: keywordTriggered,
+            riskLevel: keywordTriggered ? 'high' : 'low',
+            reasons: keywordTriggered ? ['keyword_match'] : [],
+            source: 'keyword',
+        };
+    }
+
+    const recentContext = conversationHistory
+        .slice(-6)
+        .map((entry) => `${entry.role === 'assistant' ? 'assistant' : 'user'}: ${entry.content}`)
+        .join('\n')
+        .slice(0, 1500);
+
+    const prompt = [
+        'You are a crisis triage classifier for mental health chat safety.',
+        'Classify suicide/self-harm risk from the latest user message and short context.',
+        'Return JSON only with: {"is_crisis": boolean, "risk_level": "low|medium|high|imminent", "reasons": string[]}.',
+        'Mark is_crisis=true for explicit or strongly implied self-harm/suicidal intent, plans, or inability to stay safe.',
+        '',
+        `User locale context: ${JSON.stringify({ locale: userContext?.locale, countryCode: userContext?.countryCode, timezone: userContext?.timezone })}`,
+        `Recent context:\n${recentContext || 'none'}`,
+        `Latest user message:\n${message}`,
+    ].join('\n');
+
+    for (const provider of providers) {
+        try {
+            const controller = new AbortController();
+            const timeoutId = setTimeout(() => controller.abort(), 8000);
+
+            const response = await fetch(provider.apiUrl, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'Authorization': `Bearer ${provider.apiKey}`,
+                },
+                body: JSON.stringify({
+                    model: provider.model,
+                    messages: [{ role: 'user', content: prompt }],
+                    temperature: 0,
+                    max_tokens: 180,
+                }),
+                signal: controller.signal,
+            });
+            clearTimeout(timeoutId);
+
+            if (!response.ok) {
+                const errText = await response.text().catch(() => '');
+                console.warn(`[Crisis Assessment] Provider ${provider.name} HTTP ${response.status}: ${errText.slice(0, 120)}. Cascading to next provider...`);
+                continue;
+            }
+
+            const data = await response.json();
+            const payload = parseAssessmentPayload(data?.choices?.[0]?.message?.content);
+            if (!payload || typeof payload !== 'object') {
+                console.warn(`[Crisis Assessment] Provider ${provider.name} returned non-JSON payload. Cascading...`);
+                continue;
+            }
+
+            const isCrisis = Boolean(payload?.is_crisis) || keywordTriggered;
+            const riskLevel = ['low', 'medium', 'high', 'imminent'].includes(payload?.risk_level)
+                ? payload.risk_level
+                : (isCrisis ? 'high' : 'low');
+            const reasons = Array.isArray(payload?.reasons)
+                ? payload.reasons.filter((item) => typeof item === 'string').slice(0, 5)
+                : (keywordTriggered ? ['keyword_match'] : []);
+
+            return {
+                hasCrisisIndicator: isCrisis,
+                riskLevel,
+                reasons,
+                source: `llm_${provider.model}`,
+                provider: provider.provider,
+            };
+        } catch (error) {
+            console.warn(`[Crisis Assessment] Provider ${provider.name} network/timeout error: ${error.message}. Cascading...`);
+            continue;
+        }
+    }
+
+    return {
+        hasCrisisIndicator: keywordTriggered,
+        riskLevel: keywordTriggered ? 'high' : 'low',
+        reasons: keywordTriggered ? ['keyword_match'] : [],
+        source: 'keyword-fallback',
+    };
+}
 
 export async function chatWithAI(message, conversationHistory = [], userContext = {}) {
     const analysis = mergeVoiceEmotion(analyzeMessage(message), userContext);
+    const enrichedContext = {
+        ...userContext,
+        fusion: analysis.fusion,
+    };
 
-    // Handle crisis situation
-    if (analysis.hasCrisisIndicator) {
-        return buildCrisisResponse(userContext);
+    const crisisAssessment = await assessCrisisRisk(
+        message,
+        conversationHistory,
+        enrichedContext,
+        analysis
+    );
+
+    // Handle crisis situation immediately
+    if (crisisAssessment.hasCrisisIndicator) {
+        return buildCrisisResponse(enrichedContext, crisisAssessment);
     }
 
-    // If no API key, use fallback response
-    const API_KEY = process.env.GROQ_API_KEY || process.env.NVIDIA_API_KEY;
-    if (!API_KEY) {
-        return getFallbackResponse(message, analysis, userContext);
-    }
+    const providers = getProviderCascade();
 
-    try {
-        // Build messages for API
-        const systemPrompt = getSystemPrompt(userContext);
-
-        const messages = [
-            { role: 'system', content: systemPrompt },
-        ];
-
-        // Add recent conversation history (last 10 messages)
-        const recentHistory = conversationHistory.slice(-10);
-        for (const msg of recentHistory) {
-            messages.push({
-                role: msg.role === 'assistant' ? 'assistant' : 'user',
-                content: msg.content,
-            });
-        }
-
-        // Add current message
-        messages.push({ role: 'user', content: message });
-
-        const response = await fetch(AI_API_URL, {
-            method: 'POST',
-            headers: {
-                'Content-Type': 'application/json',
-                'Authorization': `Bearer ${API_KEY}`,
-            },
-            body: JSON.stringify({
-                model: MODEL,
-                messages,
-                temperature: 0.7,
-                max_tokens: 1024,
-                top_p: 0.9,
-            }),
-        });
-
-        if (!response.ok) {
-            const error = await response.text();
-            console.error('AI API error:', error);
-            return getFallbackResponse(message, analysis, userContext);
-        }
-
-        const data = await response.json();
-        const aiMessage = data.choices?.[0]?.message?.content || getFallbackResponse(message, analysis, userContext).message;
-
-        // Extract insights from the exchange
-        const { insights, contextUpdates } = extractTherapyInsights(message);
-
+    // If no AI key configured, use deterministic fallback
+    if (providers.length === 0) {
         return {
-            message: aiMessage,
-            insights,
-            contextUpdates,
+            ...getFallbackResponse(message, analysis, enrichedContext),
+            fusion: analysis.fusion,
         };
-    } catch (error) {
-        console.error('Chat API error:', error);
-        return getFallbackResponse(message, analysis, userContext);
-    }
-}
-
-export async function generateTherapyReport(userContext, conversationHistory, moods) {
-    const API_KEY = process.env.GROQ_API_KEY || process.env.NVIDIA_API_KEY;
-    if (!API_KEY) {
-        return getDefaultTherapyReport(userContext, conversationHistory);
     }
 
-    try {
-        const prompt = getReportPrompt('therapy', userContext, conversationHistory, moods);
+    const systemPrompt = getSystemPrompt(enrichedContext);
+    const messages = [
+        { role: 'system', content: systemPrompt },
+    ];
 
-        const response = await fetch(AI_API_URL, {
-            method: 'POST',
-            headers: {
-                'Content-Type': 'application/json',
-                'Authorization': `Bearer ${API_KEY}`,
-            },
-            body: JSON.stringify({
-                model: MODEL,
-                messages: [{ role: 'user', content: prompt }],
-                temperature: 0.7,
-                max_tokens: 2048,
-            }),
+    // Add recent conversation history (last 10 messages)
+    const recentHistory = conversationHistory.slice(-10);
+    for (const msg of recentHistory) {
+        messages.push({
+            role: msg.role === 'assistant' ? 'assistant' : 'user',
+            content: msg.content,
         });
-
-        if (!response.ok) {
-            return getDefaultTherapyReport(userContext, conversationHistory);
-        }
-
-        const data = await response.json();
-        const content = data.choices?.[0]?.message?.content;
-
-        // Try to parse JSON from response
-        try {
-            return JSON.parse(content);
-        } catch {
-            return getDefaultTherapyReport(userContext, conversationHistory);
-        }
-    } catch (error) {
-        console.error('Therapy report error:', error);
-        return getDefaultTherapyReport(userContext, conversationHistory);
     }
+
+    // Add current user message
+    messages.push({ role: 'user', content: message });
+
+    for (const provider of providers) {
+        try {
+            const controller = new AbortController();
+            const timeoutId = setTimeout(() => controller.abort(), 15000);
+
+            const response = await fetch(provider.apiUrl, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'Authorization': `Bearer ${provider.apiKey}`,
+                },
+                body: JSON.stringify({
+                    model: provider.model,
+                    messages,
+                    temperature: 0.7,
+                    max_tokens: 1024,
+                    top_p: 0.9,
+                }),
+                signal: controller.signal,
+            });
+            clearTimeout(timeoutId);
+
+            if (!response.ok) {
+                const errorText = await response.text().catch(() => '');
+                console.warn(`[AI Chat Cascade] Provider ${provider.name} failed (HTTP ${response.status}): ${errorText.slice(0, 150)}. Cascading to next provider...`);
+                continue;
+            }
+
+            const data = await response.json();
+            const aiMessage = data.choices?.[0]?.message?.content;
+            if (!aiMessage || typeof aiMessage !== 'string' || !aiMessage.trim()) {
+                console.warn(`[AI Chat Cascade] Provider ${provider.name} returned empty content. Cascading...`);
+                continue;
+            }
+
+            // Extract therapeutic insights from exchange
+            const { insights, contextUpdates } = extractTherapyInsights(message);
+
+            return {
+                message: aiMessage.trim(),
+                insights,
+                contextUpdates,
+                fusion: analysis.fusion,
+                provider: provider.provider,
+            };
+        } catch (error) {
+            console.warn(`[AI Chat Cascade] Provider ${provider.name} error (${error.message}). Cascading to next provider...`);
+            continue;
+        }
+    }
+
+    // All cascade providers failed or exhausted -> local heuristic fallback
+    console.warn('[AI Chat Cascade] All cascade AI providers exhausted. Using local heuristic fallback.');
+    return {
+        ...getFallbackResponse(message, analysis, enrichedContext),
+        fusion: analysis.fusion,
+    };
 }
 
-function getDefaultTherapyReport(userContext, conversationHistory) {
+export async function generateTherapyReport(userContext = {}, conversationHistory = [], moods = []) {
+    const providers = getProviderCascade();
+    if (providers.length === 0) {
+        return getDefaultTherapyReport(userContext, conversationHistory);
+    }
+
+    const prompt = getReportPrompt('therapy', userContext, conversationHistory, moods);
+
+    for (const provider of providers) {
+        try {
+            const controller = new AbortController();
+            const timeoutId = setTimeout(() => controller.abort(), 20000);
+
+            const response = await fetch(provider.apiUrl, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'Authorization': `Bearer ${provider.apiKey}`,
+                },
+                body: JSON.stringify({
+                    model: provider.model,
+                    messages: [{ role: 'user', content: prompt }],
+                    temperature: 0.7,
+                    max_tokens: 2048,
+                }),
+                signal: controller.signal,
+            });
+            clearTimeout(timeoutId);
+
+            if (!response.ok) {
+                const errText = await response.text().catch(() => '');
+                console.warn(`[Therapy Report Cascade] Provider ${provider.name} failed (HTTP ${response.status}): ${errText.slice(0, 150)}. Cascading...`);
+                continue;
+            }
+
+            const data = await response.json();
+            const content = data.choices?.[0]?.message?.content;
+            const parsed = parseAssessmentPayload(content);
+            if (parsed && typeof parsed === 'object' && Array.isArray(parsed.therapies)) {
+                return parsed;
+            }
+            console.warn(`[Therapy Report Cascade] Provider ${provider.name} returned invalid structure. Cascading...`);
+        } catch (error) {
+            console.warn(`[Therapy Report Cascade] Provider ${provider.name} error: ${error.message}. Cascading...`);
+            continue;
+        }
+    }
+
+    return getDefaultTherapyReport(userContext, conversationHistory);
+}
+
+export function getDefaultTherapyReport(userContext = {}, conversationHistory = []) {
     return {
         summary: `Based on your ${conversationHistory.length} conversations with MindWell, we've analyzed your patterns to provide personalized recommendations.`,
         therapies: [
@@ -146,48 +351,58 @@ function getDefaultTherapyReport(userContext, conversationHistory) {
     };
 }
 
-export async function generateLifestyleReport(userContext, moods, journals) {
-    const API_KEY = process.env.GROQ_API_KEY || process.env.NVIDIA_API_KEY;
-    if (!API_KEY) {
+export async function generateLifestyleReport(userContext = {}, moods = [], journals = []) {
+    const providers = getProviderCascade();
+    if (providers.length === 0) {
         return getDefaultLifestyleReport(moods);
     }
 
-    try {
-        const prompt = getReportPrompt('lifestyle', userContext, null, moods, journals);
+    const prompt = getReportPrompt('lifestyle', userContext, null, moods, journals);
 
-        const response = await fetch(AI_API_URL, {
-            method: 'POST',
-            headers: {
-                'Content-Type': 'application/json',
-                'Authorization': `Bearer ${API_KEY}`,
-            },
-            body: JSON.stringify({
-                model: MODEL,
-                messages: [{ role: 'user', content: prompt }],
-                temperature: 0.7,
-                max_tokens: 2048,
-            }),
-        });
-
-        if (!response.ok) {
-            return getDefaultLifestyleReport(moods);
-        }
-
-        const data = await response.json();
-        const content = data.choices?.[0]?.message?.content;
-
+    for (const provider of providers) {
         try {
-            return JSON.parse(content);
-        } catch {
-            return getDefaultLifestyleReport(moods);
+            const controller = new AbortController();
+            const timeoutId = setTimeout(() => controller.abort(), 20000);
+
+            const response = await fetch(provider.apiUrl, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'Authorization': `Bearer ${provider.apiKey}`,
+                },
+                body: JSON.stringify({
+                    model: provider.model,
+                    messages: [{ role: 'user', content: prompt }],
+                    temperature: 0.7,
+                    max_tokens: 2048,
+                }),
+                signal: controller.signal,
+            });
+            clearTimeout(timeoutId);
+
+            if (!response.ok) {
+                const errText = await response.text().catch(() => '');
+                console.warn(`[Lifestyle Report Cascade] Provider ${provider.name} failed (HTTP ${response.status}): ${errText.slice(0, 150)}. Cascading...`);
+                continue;
+            }
+
+            const data = await response.json();
+            const content = data.choices?.[0]?.message?.content;
+            const parsed = parseAssessmentPayload(content);
+            if (parsed && typeof parsed === 'object') {
+                return parsed;
+            }
+            console.warn(`[Lifestyle Report Cascade] Provider ${provider.name} returned invalid structure. Cascading...`);
+        } catch (error) {
+            console.warn(`[Lifestyle Report Cascade] Provider ${provider.name} error: ${error.message}. Cascading...`);
+            continue;
         }
-    } catch (error) {
-        console.error('Lifestyle report error:', error);
-        return getDefaultLifestyleReport(moods);
     }
+
+    return getDefaultLifestyleReport(moods);
 }
 
-function getDefaultLifestyleReport(moods) {
+export function getDefaultLifestyleReport(moods = []) {
     const avgMood = moods.length > 0
         ? moods.reduce((a, m) => a + m.mood, 0) / moods.length
         : 3;
@@ -196,3 +411,4 @@ function getDefaultLifestyleReport(moods) {
         introduction: `This personalized wellness plan is designed based on your unique patterns and needs. Your average mood over the tracking period is ${avgMood.toFixed(1)}/5.`,
     };
 }
+

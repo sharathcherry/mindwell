@@ -1,0 +1,21 @@
+{
+  "name": "mindwell-root",
+  "version": "2.0.0",
+  "description": "MindWell - Two-Tier Multimodal AI Mental Wellness Platform",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "test": "node run_smoke_tests.js",
+    "test:security": "node test/run-security-tests.js",
+    "test:server": "cd server && npm test",
+    "test:db": "node server/test/test-db.js",
+    "test:client": "cd client && npm test",
+    "test:audio": "cd python_audio && python test_audio_endpoint.py",
+    "build": "cd client && npm run build",
+    "build:all": "npx prisma generate --schema=server/prisma/schema.prisma && cd client && npm run build",
+    "prisma:generate": "npx prisma generate --schema=server/prisma/schema.prisma",
+    "start": "cd server && npm start",
+    "docker:up": "docker compose up --build",
+    "docker:down": "docker compose down"
+  }
+}

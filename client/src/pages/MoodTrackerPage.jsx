@@ -1,5 +1,6 @@
-import { useState } from 'react';
-import { moodStorage } from '../utils/storage';
+import { useState, useEffect, useCallback } from 'react';
+import { moodStorage } from '../utils/storage.js';
+import { moodsApi } from '../services/api.js';
 import './MoodTrackerPage.css';
 
 const MOODS = [
@@ -10,33 +11,83 @@ const MOODS = [
     { emoji: '😢', label: 'Struggling', value: 1, color: '#f87171' },
 ];
 
+function normalizeMoodItem(m) {
+    const matched = MOODS.find(def => def.value === m.mood);
+    return {
+        id: m.id || String(Date.now()),
+        mood: m.mood,
+        emoji: m.emoji || matched?.emoji || '😐',
+        label: m.tags || m.label || matched?.label || 'Okay',
+        note: m.notes || m.note || '',
+        timestamp: m.timestamp || new Date().toISOString(),
+    };
+}
+
 export default function MoodTrackerPage() {
     const [selectedMood, setSelectedMood] = useState(null);
     const [note, setNote] = useState('');
-    const [moodHistory, setMoodHistory] = useState(() => moodStorage.getLast30Days().slice().reverse());
+    const [moodHistory, setMoodHistory] = useState(() => {
+        const local = moodStorage.getLast30Days();
+        return local.map(normalizeMoodItem).reverse();
+    });
     const [showSuccess, setShowSuccess] = useState(false);
 
-    const loadMoodHistory = () => {
-        const moods = moodStorage.getLast30Days();
-        setMoodHistory(moods.slice().reverse());
-    };
+    const refreshServerMoods = useCallback(async () => {
+        try {
+            const serverMoods = await moodsApi.getAll({ limit: 30 });
+            if (Array.isArray(serverMoods)) {
+                setMoodHistory(serverMoods.map(normalizeMoodItem));
+            }
+        } catch {
+            const local = moodStorage.getLast30Days();
+            setMoodHistory(local.map(normalizeMoodItem).reverse());
+        }
+    }, []);
 
-    const handleLogMood = () => {
+    useEffect(() => {
+        let isMounted = true;
+        moodsApi.getAll({ limit: 30 })
+            .then(serverMoods => {
+                if (isMounted && Array.isArray(serverMoods)) {
+                    setMoodHistory(serverMoods.map(normalizeMoodItem));
+                }
+            })
+            .catch(() => {
+                // Keep local state
+            });
+
+        return () => {
+            isMounted = false;
+        };
+    }, []);
+
+    const handleLogMood = async () => {
         if (!selectedMood) return;
 
-        moodStorage.add({
+        const newEntry = {
             mood: selectedMood.value,
             emoji: selectedMood.emoji,
+            tags: selectedMood.label,
             label: selectedMood.label,
+            notes: note.trim(),
             note: note.trim(),
-        });
+            timestamp: new Date().toISOString(),
+        };
 
+        // Optimistic local update
+        moodStorage.add(newEntry);
+        setMoodHistory(prev => [normalizeMoodItem(newEntry), ...prev]);
         setShowSuccess(true);
         setSelectedMood(null);
         setNote('');
-        loadMoodHistory();
-
         setTimeout(() => setShowSuccess(false), 3000);
+
+        try {
+            await moodsApi.add(newEntry);
+            await refreshServerMoods();
+        } catch (err) {
+            console.warn('Server sync for mood log failed, preserved locally:', err);
+        }
     };
 
     const getTodaysMood = () => {

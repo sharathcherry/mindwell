@@ -1,4 +1,3 @@
-import { chatWithAI } from '../server/services/nvidia.js';
 import { isPlainObject, isNonEmptyString, methodNotAllowed, normalizeArray } from './_shared.js';
 
 export default async function handler(req, res) {
@@ -8,6 +7,7 @@ export default async function handler(req, res) {
     }
 
     try {
+        const { chatWithAI } = await import('../server/services/nvidia.js');
         const { message, conversationHistory, userContext } = req.body || {};
         if (!isNonEmptyString(message)) {
             return res.status(400).json({ error: 'Message is required' });
@@ -25,4 +25,3 @@ export default async function handler(req, res) {
         return res.status(500).json({ error: 'Failed to process message' });
     }
 }
-

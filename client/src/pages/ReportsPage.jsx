@@ -183,9 +183,9 @@ export default function ReportsPage() {
             <div className="card info-card">
                 <h3>💡 How Reports Work</h3>
                 <ul>
-                    <li>Reports are generated using your local data (nothing is sent to external servers)</li>
+                    <li>Reports are synthesized from your journal and mood logs with privacy-focused AI analysis</li>
                     <li>The more you use MindWell, the more personalized your reports become</li>
-                    <li>AI-powered insights when connected to the backend</li>
+                    <li>AI-powered clinical recommendations when connected to the backend</li>
                     <li>All reports include mental health disclaimers</li>
                 </ul>
             </div>

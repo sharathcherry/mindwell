@@ -1,3 +1,6 @@
+# Agent scaffolding (internal build tooling)
+.agents/
+
 # Node / frontend
 node_modules/
 client/node_modules/
@@ -32,6 +35,10 @@ python_audio/.env
 Thumbs.db
 .vscode/
 .idea/
+
+# SQLite local dev database (do not commit)
+server/prisma/dev.db
+server/prisma/dev.db-journal
 
 # Logs
 *.log

@@ -1,4 +1,3 @@
-import { generateTherapyReport } from '../../server/services/nvidia.js';
 import { isPlainObject, methodNotAllowed, normalizeArray } from '../_shared.js';
 
 export default async function handler(req, res) {
@@ -8,6 +7,7 @@ export default async function handler(req, res) {
     }
 
     try {
+        const { generateTherapyReport } = await import('../../server/services/nvidia.js');
         const { userContext, conversationHistory, moods } = req.body || {};
         const report = await generateTherapyReport(
             isPlainObject(userContext) ? userContext : {},
@@ -21,4 +21,3 @@ export default async function handler(req, res) {
         return res.status(500).json({ error: 'Failed to generate therapy report' });
     }
 }
-

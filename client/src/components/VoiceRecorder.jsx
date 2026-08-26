@@ -9,6 +9,9 @@ export default function VoiceRecorder({ onResult, disabled }) {
     const [error, setError] = useState(null);
     const mediaRecorderRef = useRef(null);
     const chunksRef = useRef([]);
+    const fileInputRef = useRef(null);
+    const dragCounterRef = useRef(0);
+    const [dragActive, setDragActive] = useState(false);
 
     const startRecording = async () => {
         try {
@@ -55,7 +58,7 @@ export default function VoiceRecorder({ onResult, disabled }) {
         setIsProcessing(true);
         try {
             const formData = new FormData();
-            formData.append('audio', audioBlob, 'recording.webm');
+            formData.append('audio', audioBlob, audioBlob.name || 'recording.webm');
 
             const response = await fetch(AUDIO_API_URL, {
                 method: 'POST',
@@ -83,6 +86,53 @@ export default function VoiceRecorder({ onResult, disabled }) {
         }
     };
 
+    const handleFileUpload = async (file) => {
+        if (!file || disabled || isProcessing) return;
+        setError(null);
+        await processAudio(file);
+    };
+
+    const handleFileChange = async (event) => {
+        const file = event.target.files?.[0];
+        await handleFileUpload(file);
+        event.target.value = '';
+    };
+
+    const openFilePicker = () => {
+        if (disabled || isProcessing) return;
+        fileInputRef.current?.click();
+    };
+
+    const handleDragEnter = (event) => {
+        event.preventDefault();
+        event.stopPropagation();
+        dragCounterRef.current += 1;
+        setDragActive(true);
+    };
+
+    const handleDragOver = (event) => {
+        event.preventDefault();
+    };
+
+    const handleDragLeave = (event) => {
+        event.preventDefault();
+        event.stopPropagation();
+        dragCounterRef.current -= 1;
+        if (dragCounterRef.current <= 0) {
+            dragCounterRef.current = 0;
+            setDragActive(false);
+        }
+    };
+
+    const handleDrop = async (event) => {
+        event.preventDefault();
+        event.stopPropagation();
+        setDragActive(false);
+        dragCounterRef.current = 0;
+        const file = event.dataTransfer?.files?.[0];
+        await handleFileUpload(file);
+    };
+
     const handleClick = () => {
         if (isRecording) {
             stopRecording();
@@ -92,22 +142,50 @@ export default function VoiceRecorder({ onResult, disabled }) {
     };
 
     return (
-        <div className="voice-recorder">
-            <button
-                type="button"
-                onClick={handleClick}
-                disabled={disabled || isProcessing}
-                className={`voice-btn ${isRecording ? 'recording' : ''} ${isProcessing ? 'processing' : ''}`}
-                title={isRecording ? 'Stop recording' : 'Start voice input'}
-            >
-                {isProcessing ? (
-                    <span className="processing-icon">⏳</span>
-                ) : isRecording ? (
-                    <span className="recording-icon">⏹️</span>
-                ) : (
-                    <span className="mic-icon">🎤</span>
-                )}
-            </button>
+        <div
+            className={`voice-recorder${dragActive ? ' drag-active' : ''}`}
+            onDragEnter={handleDragEnter}
+            onDragOver={handleDragOver}
+            onDragLeave={handleDragLeave}
+            onDrop={handleDrop}
+        >
+            <div className="voice-controls">
+                <button
+                    type="button"
+                    onClick={handleClick}
+                    disabled={disabled || isProcessing}
+                    className={`voice-btn ${isRecording ? 'recording' : ''} ${isProcessing ? 'processing' : ''}`}
+                    title={isRecording ? 'Stop recording' : 'Start voice input'}
+                >
+                    {isProcessing ? (
+                        <span className="processing-icon">⏳</span>
+                    ) : isRecording ? (
+                        <span className="recording-icon">⏹️</span>
+                    ) : (
+                        <span className="mic-icon">🎤</span>
+                    )}
+                </button>
+                <button
+                    type="button"
+                    onClick={openFilePicker}
+                    disabled={disabled || isProcessing}
+                    className="voice-upload-btn"
+                    title="Upload a voice note from your files"
+                >
+                    <span className="plus-icon" aria-hidden="true">+</span>
+                </button>
+            </div>
+            <input
+                ref={fileInputRef}
+                type="file"
+                accept="audio/*"
+                onChange={handleFileChange}
+                style={{ display: 'none' }}
+                disabled={disabled}
+            />
+            <div className="drop-hint">
+                {dragActive ? 'Release to upload your audio note' : 'Drop an audio file or tap + to add a voice note'}
+            </div>
 
             {isRecording && (
                 <span className="recording-indicator">
