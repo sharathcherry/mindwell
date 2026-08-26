@@ -336,6 +336,6 @@ async function handleGoogle(req, res) {
         });
     } catch (error) {
         console.error('API Google login error:', error);
-        return res.status(500).json({ error: 'Failed to authenticate with Google' });
+        return res.status(500).json({ error: error.message || 'Failed to authenticate with Google' });
     }
 }
