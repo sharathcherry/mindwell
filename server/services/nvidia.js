@@ -5,44 +5,32 @@ import { getFallbackResponse } from './fallback.js';
 
 /**
  * Dynamic Provider Cascade Priority Order:
- * 1. Google Gemini 2.0 Flash (Multimodal, 1500 req/day free)
- * 2. Groq Llama 3.3 70B (High-speed LPU free tier)
- * 3. NVIDIA NIM Llama 3.3 70B (Hosted inference free credits)
+ * 1. Google Gemini 3.6 Flash (Multimodal, 1500 req/day free)
+ * 2. Groq Qwen 3.8 27B (High-speed LPU free tier)
  * 4. Local Heuristics / Deterministic Fallbacks
  */
 export function getProviderCascade() {
     const providers = [];
 
-    // 1. Google Gemini 2.0 Flash
+    // 1. Google Gemini 3.6 Flash
     if (process.env.GEMINI_API_KEY) {
         providers.push({
-            name: 'Gemini 2.0 Flash',
+            name: 'Gemini 3.6 Flash',
             apiUrl: 'https://generativelanguage.googleapis.com/v1beta/openai/chat/completions',
-            model: 'gemini-2.0-flash',
+            model: 'gemini-3.6-flash',
             apiKey: process.env.GEMINI_API_KEY,
-            provider: 'Gemini 2.0 Flash (Multimodal)',
+            provider: 'Gemini 3.6 Flash (Multimodal)',
         });
     }
 
-    // 2. Groq Llama 3.3 70B
+    // 2. Groq Qwen 3.8 27B
     if (process.env.GROQ_API_KEY) {
         providers.push({
-            name: 'Groq Llama 3.3 70B',
+            name: 'Groq Qwen 3.8 27B',
             apiUrl: 'https://api.groq.com/openai/v1/chat/completions',
-            model: 'llama-3.3-70b-versatile',
+            model: 'qwen/qwen3.8-27b',
             apiKey: process.env.GROQ_API_KEY,
-            provider: 'Groq Cloud (Llama 3.3 70B)',
-        });
-    }
-
-    // 3. NVIDIA NIM
-    if (process.env.NVIDIA_API_KEY) {
-        providers.push({
-            name: 'NVIDIA NIM',
-            apiUrl: 'https://integrate.api.nvidia.com/v1/chat/completions',
-            model: 'meta/llama-3.3-70b-instruct',
-            apiKey: process.env.NVIDIA_API_KEY,
-            provider: 'NVIDIA NIM (Llama 3.3 70B)',
+            provider: 'Groq Cloud (Qwen 3.8 27B)',
         });
     }
 
