@@ -1,5 +1,5 @@
 import { getSystemPrompt, getReportPrompt } from './prompts.js';
-import { analyzeMessage, extractTherapyInsights, mergeVoiceEmotion } from './analysis.js';
+import { analyzeMessage, analyzeMessageAsync, extractTherapyInsights, mergeVoiceEmotion } from './analysis.js';
 import { buildCrisisResponse } from './crisis.js';
 import { getFallbackResponse } from './fallback.js';
 
@@ -170,10 +170,12 @@ export async function assessCrisisRisk(message, conversationHistory = [], userCo
 }
 
 export async function chatWithAI(message, conversationHistory = [], userContext = {}) {
-    const analysis = mergeVoiceEmotion(analyzeMessage(message), userContext);
+    const rawAnalysis = await analyzeMessageAsync(message);
+    const analysis = mergeVoiceEmotion(rawAnalysis, userContext);
     const enrichedContext = {
         ...userContext,
         fusion: analysis.fusion,
+        hfEmotion: rawAnalysis.hfClassification || null,
     };
 
     const crisisAssessment = await assessCrisisRisk(

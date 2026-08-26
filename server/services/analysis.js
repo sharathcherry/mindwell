@@ -15,7 +15,7 @@ const THERAPY_KEYWORDS = {
 };
 
 export function analyzeMessage(message) {
-    const lowercaseMessage = message.toLowerCase();
+    const lowercaseMessage = (message || '').toLowerCase();
 
     const detected = [];
     for (const [emotion, keywords] of Object.entries(EMOTIONS)) {
@@ -27,6 +27,105 @@ export function analyzeMessage(message) {
     const hasCrisisIndicator = CRISIS_KEYWORDS.some((keyword) => lowercaseMessage.includes(keyword));
 
     return { detected, hasCrisisIndicator };
+}
+
+/**
+ * Asynchronously classify text emotions using Hugging Face RoBERTa transformer
+ * Model: j-hartmann/emotion-english-distilroberta-base (7 Ekman emotions)
+ * Seamless zero-latency fallback to deterministic keywords if token is absent or network offline.
+ */
+export async function classifyTextEmotionHuggingFace(message, customToken = null) {
+    const token = customToken || process.env.HF_TOKEN || process.env.HUGGINGFACE_API_KEY;
+    if (!token || !message || typeof message !== 'string') {
+        return null;
+    }
+
+    try {
+        const controller = new AbortController();
+        const timeout = setTimeout(() => controller.abort(), 3500);
+
+        const response = await fetch('https://router.huggingface.co/hf-inference/models/j-hartmann/emotion-english-distilroberta-base', {
+            method: 'POST',
+            headers: {
+                'Authorization': `Bearer ${token}`,
+                'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({ inputs: message.slice(0, 512) }),
+            signal: controller.signal,
+        });
+        clearTimeout(timeout);
+
+        if (!response.ok) {
+            return null;
+        }
+
+        const data = await response.json();
+        const results = Array.isArray(data) && Array.isArray(data[0]) ? data[0] : (Array.isArray(data) ? data : []);
+        if (results.length === 0) return null;
+
+        const hfScores = {};
+        for (const item of results) {
+            if (item && item.label) {
+                hfScores[item.label.toLowerCase()] = Number((item.score || 0).toFixed(4));
+            }
+        }
+
+        const hfToClinicalMap = {
+            sadness: 'depression',
+            fear: 'fear',
+            anger: 'anger',
+            disgust: 'anger',
+            surprise: 'anxiety',
+            joy: 'positive',
+            neutral: 'neutral',
+        };
+
+        const topEmotionItem = results[0];
+        const topLabel = topEmotionItem.label.toLowerCase();
+        const mappedTop = hfToClinicalMap[topLabel] || topLabel;
+
+        const detected = [];
+        for (const item of results) {
+            if (item.score >= 0.25) {
+                const mapped = hfToClinicalMap[item.label.toLowerCase()];
+                if (mapped && mapped !== 'neutral' && !detected.includes(mapped)) {
+                    detected.push(mapped);
+                }
+            }
+        }
+        if (detected.length === 0 && mappedTop !== 'neutral') {
+            detected.push(mappedTop);
+        }
+
+        return {
+            source: 'huggingface_distilroberta',
+            model: 'j-hartmann/emotion-english-distilroberta-base',
+            topEmotion: mappedTop,
+            rawTopEmotion: topLabel,
+            confidence: Number((topEmotionItem.score || 0).toFixed(4)),
+            detected,
+            scores: hfScores,
+        };
+    } catch {
+        return null;
+    }
+}
+
+export async function analyzeMessageAsync(message, customToken = null) {
+    const keywordAnalysis = analyzeMessage(message);
+    const hfAnalysis = await classifyTextEmotionHuggingFace(message, customToken);
+
+    if (!hfAnalysis) {
+        return keywordAnalysis;
+    }
+
+    const combinedDetected = Array.from(new Set([...hfAnalysis.detected, ...keywordAnalysis.detected]));
+
+    return {
+        ...keywordAnalysis,
+        detected: combinedDetected,
+        hfClassification: hfAnalysis,
+    };
 }
 
 export function extractTherapyInsights(message) {
